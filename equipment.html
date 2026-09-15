@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Equipment Management</title>
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+
+    <div>
+      <h2>Laboratory Asset Management</h2>
+      <span id="userInfo">Loading...</span>
+    </div>
+
+    <button
+      type="button"
+      id="logoutBtn"
+      class="logout-btn">
+      Logout
+    </button>
+
+  </header>
+
+
+  <!-- LAYOUT -->
+  <div class="layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+      <h3>MENU</h3>
+
+      <nav>
+
+        <a
+          href="dashboard.html"
+          data-access="administrator staff requester">
+          Dashboard
+        </a>
+
+        <a
+          href="equipment.html"
+          class="active"
+          data-access="administrator staff requester">
+          Equipment
+        </a>
+
+        <a
+          href="borrowing.html"
+          data-access="administrator staff requester">
+          Borrowing Requests
+        </a>
+
+        <a
+          href="returns.html"
+          data-access="administrator staff">
+          Returns
+        </a>
+
+        <a
+          href="maintenance.html"
+          data-access="administrator staff">
+          Maintenance
+        </a>
+
+        <a
+          href="audit-logs.html"
+          data-access="administrator">
+          Audit Logs
+        </a>
+
+      </nav>
+
+    </aside>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+      <!-- PAGE HEADER -->
+      <div class="page-header">
+
+        <h1>Equipment Management</h1>
+
+        <p>
+          View and manage laboratory equipment.
+        </p>
+
+      </div>
+
+
+      <!-- ADD / EDIT EQUIPMENT -->
+      <section
+        id="addEquipmentSection"
+        class="card">
+
+        <h2 id="equipmentFormTitle">
+          Add Equipment
+        </h2>
+
+        <form id="equipmentForm">
+
+          <!-- CODE -->
+          <div class="form-group">
+
+            <label for="equipmentCode">
+              Equipment Code
+            </label>
+
+            <input
+              type="text"
+              id="equipmentCode"
+              placeholder="Example: LAP-003"
+              required>
+
+          </div>
+
+
+          <!-- NAME -->
+          <div class="form-group">
+
+            <label for="equipmentName">
+              Equipment Name
+            </label>
+
+            <input
+              type="text"
+              id="equipmentName"
+              placeholder="Example: Laptop Computer"
+              required>
+
+          </div>
+
+
+          <!-- CATEGORY -->
+          <div class="form-group">
+
+            <label for="category">
+              Category
+            </label>
+
+            <input
+              type="text"
+              id="category"
+              placeholder="Example: Computer"
+              required>
+
+          </div>
+
+
+          <!-- LABORATORY -->
+          <div class="form-group">
+
+            <label for="laboratory">
+              Laboratory
+            </label>
+
+            <input
+              type="text"
+              id="laboratory"
+              placeholder="Example: Computer Laboratory"
+              required>
+
+          </div>
+
+
+          <!-- QUANTITY -->
+          <div class="form-group">
+
+            <label for="quantity">
+              Quantity
+            </label>
+
+            <input
+              type="number"
+              id="quantity"
+              min="1"
+              value="1"
+              required>
+
+          </div>
+
+
+          <!-- STATUS -->
+          <div class="form-group">
+
+            <label for="status">
+              Status
+            </label>
+
+            <select
+              id="status"
+              required>
+
+              <option value="Available">
+                Available
+              </option>
+
+              <option value="Borrowed">
+                Borrowed
+              </option>
+
+              <option value="Maintenance">
+                Maintenance
+              </option>
+
+              <option value="Damaged">
+                Damaged
+              </option>
+
+              <option value="Unserviceable">
+                Unserviceable
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <!-- BUTTONS -->
+          <div class="form-actions">
+
+            <button
+              type="submit"
+              id="saveEquipmentBtn"
+              class="btn-primary">
+              Add Equipment
+            </button>
+
+            <button
+              type="button"
+              id="cancelEditBtn"
+              class="btn-secondary hidden">
+              Cancel Edit
+            </button>
+
+          </div>
+
+        </form>
+
+
+        <p id="equipmentMessage"></p>
+
+      </section>
+
+
+      <!-- SEARCH -->
+      <section class="card">
+
+        <h2>Search Equipment</h2>
+
+        <div class="search-box">
+
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Search by equipment code, name, category, or laboratory...">
+
+        </div>
+
+      </section>
+
+
+      <!-- EQUIPMENT RECORDS -->
+      <section class="card">
+
+        <div class="table-header">
+
+          <h2>Equipment Records</h2>
+
+          <span id="recordCount">
+            Loading...
+          </span>
+
+        </div>
+
+
+        <div class="table-container">
+
+          <table>
+
+            <thead>
+
+              <tr>
+
+                <th>Equipment Code</th>
+                <th>Equipment Name</th>
+                <th>Category</th>
+                <th>Laboratory</th>
+                <th>Quantity</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+
+              </tr>
+
+            </thead>
+
+
+            <tbody id="equipmentTableBody">
+
+              <tr>
+
+                <td
+                  colspan="8"
+                  class="loading-state">
+
+                  Loading equipment...
+
+                </td>
+
+              </tr>
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </section>
+
+    </main>
+
+  </div>
+
+
+  <!-- SUPABASE -->
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script src="js/supabase.js"></script>
+
+  <script src="js/equipment.js"></script>
+
+</body>
+
+</html>

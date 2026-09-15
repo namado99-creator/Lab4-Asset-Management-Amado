@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Audit Logs - Laboratory Asset Management</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+
+<body>
+
+
+    <!-- =====================================================
+         TOPBAR
+         ===================================================== -->
+    <header class="topbar">
+
+        <div>
+            <h2>Laboratory Asset Management</h2>
+            <span>Audit Logs</span>
+        </div>
+
+
+        <div class="user-area">
+
+            <span id="userName">
+                Loading...
+            </span>
+
+            <span id="userRole">
+                Loading...
+            </span>
+
+            <button
+                id="logoutBtn"
+                class="logout-btn">
+                Logout
+            </button>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MAIN LAYOUT
+         SIDEBAR + MAIN CONTENT
+         ===================================================== -->
+    <div class="layout">
+
+
+        <!-- =================================================
+             SIDEBAR
+             ================================================= -->
+        <aside class="sidebar">
+
+            <h3>MENU</h3>
+
+
+            <nav>
+
+                <a
+                    href="dashboard.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Dashboard
+                </a>
+
+
+                <a
+                    href="equipment.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Equipment
+                </a>
+
+
+                <a
+                    href="borrowing.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Borrowing Requests
+                </a>
+
+
+                <a
+                    href="returns.html"
+                    data-access="administrator staff laboratory_staff">
+                    Returns
+                </a>
+
+
+                <a
+                    href="maintenance.html"
+                    data-access="administrator staff laboratory_staff">
+                    Maintenance
+                </a>
+
+
+                <a
+                    href="audit-logs.html"
+                    class="active"
+                    data-access="administrator">
+                    Audit Logs
+                </a>
+
+            </nav>
+
+        </aside>
+
+
+
+        <!-- =================================================
+             MAIN CONTENT
+             ================================================= -->
+        <main class="main-content">
+
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+
+                <h1>Audit Logs</h1>
+
+                <p>
+                    View important system activities and transactions.
+                </p>
+
+            </div>
+
+
+
+            <!-- =================================================
+                 SEARCH AND FILTER
+                 ================================================= -->
+            <section class="card">
+
+                <h2>Search Audit Logs</h2>
+
+
+                <div class="form-row">
+
+
+                    <!-- SEARCH -->
+                    <div class="form-group">
+
+                        <label for="searchInput">
+                            Search
+                        </label>
+
+                        <input
+                            type="text"
+                            id="searchInput"
+                            placeholder="Search action, module, or description...">
+
+                    </div>
+
+
+
+                    <!-- MODULE FILTER -->
+                    <div class="form-group">
+
+                        <label for="moduleFilter">
+                            Module
+                        </label>
+
+                        <select id="moduleFilter">
+
+                            <option value="">
+                                All Modules
+                            </option>
+
+                            <option value="Equipment">
+                                Equipment
+                            </option>
+
+                            <option value="Borrowing">
+                                Borrowing
+                            </option>
+
+                            <option value="Returns">
+                                Returns
+                            </option>
+
+                            <option value="Maintenance">
+                                Maintenance
+                            </option>
+
+                            <option value="Authentication">
+                                Authentication
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 MESSAGE
+                 ================================================= -->
+            <div id="auditMessage"></div>
+
+
+
+            <!-- =================================================
+                 AUDIT RECORDS
+                 ================================================= -->
+            <section class="card">
+
+
+                <div class="table-header">
+
+                    <h2>
+                        System Activity
+                    </h2>
+
+                    <span id="logCount">
+                        0 records
+                    </span>
+
+                </div>
+
+
+
+                <div class="table-container">
+
+                    <table>
+
+
+                        <thead>
+
+                            <tr>
+
+                                <th>ID</th>
+
+                                <th>User</th>
+
+                                <th>Action</th>
+
+                                <th>Module</th>
+
+                                <th>Record ID</th>
+
+                                <th>Description</th>
+
+                                <th>Date & Time</th>
+
+                            </tr>
+
+                        </thead>
+
+
+
+                        <tbody id="auditTableBody">
+
+                            <tr>
+
+                                <td
+                                    colspan="7"
+                                    class="loading-state">
+
+                                    Loading audit logs...
+
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+
+                    </table>
+
+                </div>
+
+
+            </section>
+
+
+        </main>
+
+
+    </div>
+
+
+
+    <!-- =====================================================
+         SUPABASE
+         ===================================================== -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script src="js/supabase.js"></script>
+
+    <script src="js/audit.js"></script>
+
+
+</body>
+
+</html>

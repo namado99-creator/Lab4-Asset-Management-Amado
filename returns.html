@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Returns - Laboratory Asset Management</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+
+<body>
+
+
+    <!-- =====================================================
+         TOPBAR
+         ===================================================== -->
+    <header class="topbar">
+
+        <div>
+            <h2>Laboratory Asset Management</h2>
+            <span>Returns</span>
+        </div>
+
+
+        <div class="user-area">
+
+            <span id="userName">
+                Loading...
+            </span>
+
+            <span id="userRole">
+                Loading...
+            </span>
+
+            <button
+                id="logoutBtn"
+                class="logout-btn">
+                Logout
+            </button>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MAIN LAYOUT
+         ===================================================== -->
+    <div class="layout">
+
+
+        <!-- =================================================
+             SIDEBAR
+             ================================================= -->
+        <aside class="sidebar">
+
+            <h3>MENU</h3>
+
+            <nav>
+
+                <a
+                    href="dashboard.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Dashboard
+                </a>
+
+
+                <a
+                    href="equipment.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Equipment
+                </a>
+
+
+                <a
+                    href="borrowing.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Borrowing Requests
+                </a>
+
+
+                <a
+                    href="returns.html"
+                    class="active"
+                    data-access="administrator staff laboratory_staff">
+                    Returns
+                </a>
+
+
+                <a
+                    href="maintenance.html"
+                    data-access="administrator staff laboratory_staff">
+                    Maintenance
+                </a>
+
+
+                <a
+                    href="audit-logs.html"
+                    data-access="administrator">
+                    Audit Logs
+                </a>
+
+            </nav>
+
+        </aside>
+
+
+
+        <!-- =================================================
+             MAIN CONTENT
+             ================================================= -->
+        <main class="main-content">
+
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+
+                <h1>Equipment Returns</h1>
+
+                <p>
+                    Process returned laboratory equipment and update its status.
+                </p>
+
+            </div>
+
+
+
+            <!-- =================================================
+                 SEARCH / FILTER
+                 ================================================= -->
+            <section class="card">
+
+                <h2>Search Returned Equipment</h2>
+
+
+                <div class="form-row">
+
+
+                    <div class="form-group">
+
+                        <label for="searchInput">
+                            Search
+                        </label>
+
+                        <input
+                            type="text"
+                            id="searchInput"
+                            placeholder="Search equipment or requester...">
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="statusFilter">
+                            Status
+                        </label>
+
+                        <select id="statusFilter">
+
+                            <option value="All">
+                                All
+                            </option>
+
+                            <option value="Released">
+                                Released
+                            </option>
+
+                            <option value="Returned">
+                                Returned
+                            </option>
+
+                            <option value="Closed">
+                                Closed
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- MESSAGE -->
+            <div id="returnMessage"></div>
+
+
+
+            <!-- =================================================
+                 RETURN RECORDS
+                 ================================================= -->
+            <section class="card">
+
+                <div class="table-header">
+
+                    <h2>
+                        Return Records
+                    </h2>
+
+                    <span id="recordCount">
+                        0 records
+                    </span>
+
+                </div>
+
+
+                <div class="table-container">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+
+                                <th>ID</th>
+
+                                <th>Equipment</th>
+
+                                <th>Requester</th>
+
+                                <th>Quantity</th>
+
+                                <th>Purpose</th>
+
+                                <th>Released Date</th>
+
+                                <th>Status</th>
+
+                                <th>Action</th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody id="returnsTableBody">
+
+                            <tr>
+
+                                <td
+                                    colspan="8"
+                                    class="loading-state">
+
+                                    Loading return records...
+
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 RETURN DETAILS
+                 ================================================= -->
+            <section
+                id="returnDetailsSection"
+                class="card hidden">
+
+                <h2>Return Details</h2>
+
+                <div id="returnDetails"></div>
+
+
+                <div class="form-actions">
+
+                    <button
+                        type="button"
+                        id="closeDetailsBtn"
+                        class="btn-secondary">
+                        Close
+                    </button>
+
+                </div>
+
+            </section>
+
+
+        </main>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         SUPABASE
+         ===================================================== -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script src="js/supabase.js"></script>
+
+    <script src="js/returns.js"></script>
+
+
+</body>
+
+</html>

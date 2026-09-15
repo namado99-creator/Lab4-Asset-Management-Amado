@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dashboard - Laboratory Asset Management</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <!-- ==============================
+         TOP BAR
+    =============================== -->
+
+    <header class="topbar">
+
+        <div>
+            <h2>Laboratory Asset Management</h2>
+            <p>Role-Based Transaction System</p>
+        </div>
+
+        <div class="user-section">
+
+            <span id="userName">
+                Loading...
+            </span>
+
+            <span id="userRole" class="role-badge">
+                Loading...
+            </span>
+
+            <button id="logoutBtn" class="logout-btn">
+                Logout
+            </button>
+
+        </div>
+
+    </header>
+
+
+    <!-- ==============================
+         MAIN LAYOUT
+    =============================== -->
+
+    <div class="layout">
+
+
+        <!-- ==============================
+             SIDEBAR
+        =============================== -->
+
+        <aside class="sidebar">
+
+            <h3>MENU</h3>
+
+            <nav id="mainNavigation">
+
+                <!-- Everyone -->
+                <a href="dashboard.html"
+                   class="nav-item"
+                   data-access="all">
+                    Dashboard
+                </a>
+
+
+                <!-- Administrator + Staff -->
+                <a href="equipment.html"
+                   id="equipmentMenu"
+                   class="nav-item"
+                   data-access="administrator,staff">
+                    Equipment
+                </a>
+
+
+                <!-- Administrator + Staff + Requester -->
+                <a href="borrowing.html"
+                   id="borrowingMenu"
+                   class="nav-item"
+                   data-access="administrator,staff,requester">
+                    Borrowing Requests
+                </a>
+
+
+                <!-- Administrator + Staff -->
+                <a href="returns.html"
+                   id="returnMenu"
+                   class="nav-item"
+                   data-access="administrator,staff">
+                    Returns
+                </a>
+
+
+                <!-- Administrator + Staff -->
+                <a href="maintenance.html"
+                   id="maintenanceMenu"
+                   class="nav-item"
+                   data-access="administrator,staff">
+                    Maintenance
+                </a>
+
+
+                <!-- Administrator only -->
+                <a href="audit-logs.html"
+                   id="auditMenu"
+                   class="nav-item"
+                   data-access="administrator">
+                    Audit Logs
+                </a>
+
+            </nav>
+
+        </aside>
+
+
+        <!-- ==============================
+             MAIN CONTENT
+        =============================== -->
+
+        <main class="main-content">
+
+
+            <!-- WELCOME -->
+            <div class="welcome">
+
+                <h1>Dashboard</h1>
+
+                <p>
+                    Welcome,
+                    <strong id="welcomeName">User</strong>!
+                </p>
+
+                <p id="accessMessage">
+                    Loading your access...
+                </p>
+
+            </div>
+
+
+            <!-- ==============================
+                 DASHBOARD CARDS
+            =============================== -->
+
+            <div class="dashboard-cards">
+
+
+                <!-- Equipment cards -->
+                <div class="dashboard-card">
+
+                    <h3>Total Equipment</h3>
+
+                    <p id="totalEquipment">
+                        0
+                    </p>
+
+                </div>
+
+
+                <div class="dashboard-card">
+
+                    <h3>Available</h3>
+
+                    <p id="availableEquipment">
+                        0
+                    </p>
+
+                </div>
+
+
+                <div class="dashboard-card">
+
+                    <h3>Borrowed</h3>
+
+                    <p id="borrowedEquipment">
+                        0
+                    </p>
+
+                </div>
+
+
+                <!-- Request card -->
+                <div class="dashboard-card">
+
+                    <h3>Pending Requests</h3>
+
+                    <p id="pendingRequests">
+                        0
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- ==============================
+                 ROLE INFORMATION
+            =============================== -->
+
+            <section class="role-section">
+
+                <h2>Your Role</h2>
+
+                <div class="role-box">
+
+                    <h3 id="roleTitle">
+                        Loading...
+                    </h3>
+
+                    <p id="roleDescription">
+                        Loading permissions...
+                    </p>
+
+                </div>
+
+            </section>
+
+
+
+    <!-- ==============================
+         SUPABASE
+    =============================== -->
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script src="js/supabase.js"></script>
+
+    <!-- Dashboard logic -->
+    <script src="js/dashboard.js"></script>
+
+</body>
+
+</html>

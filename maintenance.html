@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Maintenance - Laboratory Asset Management</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+
+<body>
+
+
+    <!-- =====================================================
+         TOPBAR
+         ===================================================== -->
+    <header class="topbar">
+
+        <div>
+            <h2>Laboratory Asset Management</h2>
+            <span>Maintenance</span>
+        </div>
+
+
+        <div class="user-area">
+
+            <span id="userName">
+                Loading...
+            </span>
+
+            <span id="userRole">
+                Loading...
+            </span>
+
+            <button
+                id="logoutBtn"
+                class="logout-btn">
+                Logout
+            </button>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MAIN LAYOUT
+         ===================================================== -->
+    <div class="layout">
+
+
+        <!-- =================================================
+             SIDEBAR
+             ================================================= -->
+        <aside class="sidebar">
+
+            <h3>MENU</h3>
+
+            <nav>
+
+                <a
+                    href="dashboard.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Dashboard
+                </a>
+
+
+                <a
+                    href="equipment.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Equipment
+                </a>
+
+
+                <a
+                    href="borrowing.html"
+                    data-access="administrator staff laboratory_staff requester viewer">
+                    Borrowing Requests
+                </a>
+
+
+                <a
+                    href="returns.html"
+                    data-access="administrator staff laboratory_staff">
+                    Returns
+                </a>
+
+
+                <a
+                    href="maintenance.html"
+                    class="active"
+                    data-access="administrator staff laboratory_staff">
+                    Maintenance
+                </a>
+
+
+                <a
+                    href="audit-logs.html"
+                    data-access="administrator">
+                    Audit Logs
+                </a>
+
+            </nav>
+
+        </aside>
+
+
+
+        <!-- =================================================
+             MAIN CONTENT
+             ================================================= -->
+        <main class="main-content">
+
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+
+                <h1>Maintenance Management</h1>
+
+                <p>
+                    Manage equipment maintenance and repair requests.
+                </p>
+
+            </div>
+
+
+
+            <!-- =================================================
+                 MAINTENANCE REQUEST
+                 ================================================= -->
+            <section
+                id="maintenanceFormSection"
+                class="card">
+
+                <h2>Submit Maintenance Request</h2>
+
+
+                <form id="maintenanceForm">
+
+
+                    <!-- EQUIPMENT -->
+                    <div class="form-group">
+
+                        <label for="equipmentId">
+                            Equipment
+                        </label>
+
+                        <select
+                            id="equipmentId"
+                            required>
+
+                            <option value="">
+                                Select equipment
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+
+                    <!-- ISSUE -->
+                    <div class="form-group">
+
+                        <label for="issueDescription">
+                            Issue / Description
+                        </label>
+
+                        <textarea
+                            id="issueDescription"
+                            rows="4"
+                            placeholder="Describe the equipment problem or maintenance needed..."
+                            required></textarea>
+
+                    </div>
+
+
+
+                    <!-- PRIORITY -->
+                    <div class="form-group">
+
+                        <label for="priority">
+                            Priority
+                        </label>
+
+                        <select
+                            id="priority"
+                            required>
+
+                            <option value="Low">
+                                Low
+                            </option>
+
+                            <option value="Medium">
+                                Medium
+                            </option>
+
+                            <option value="High">
+                                High
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+
+                    <!-- BUTTONS -->
+                    <div class="form-actions">
+
+                        <button
+                            type="submit"
+                            id="submitMaintenanceBtn"
+                            class="btn-primary">
+                            Submit Request
+                        </button>
+
+
+                        <button
+                            type="button"
+                            id="cancelMaintenanceBtn"
+                            class="btn-secondary hidden">
+                            Cancel
+                        </button>
+
+                    </div>
+
+
+                </form>
+
+
+                <p id="maintenanceMessage"></p>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 SEARCH / FILTER
+                 ================================================= -->
+            <section class="card">
+
+                <h2>Search Maintenance Records</h2>
+
+
+                <div class="form-row">
+
+
+                    <div class="form-group">
+
+                        <label for="searchInput">
+                            Search
+                        </label>
+
+                        <input
+                            type="text"
+                            id="searchInput"
+                            placeholder="Search equipment or issue...">
+
+                    </div>
+
+
+
+                    <div class="form-group">
+
+                        <label for="statusFilter">
+                            Status
+                        </label>
+
+                        <select id="statusFilter">
+
+                            <option value="All">
+                                All Statuses
+                            </option>
+
+                            <option value="Pending">
+                                Pending
+                            </option>
+
+                            <option value="In Progress">
+                                In Progress
+                            </option>
+
+                            <option value="Completed">
+                                Completed
+                            </option>
+
+                            <option value="Cancelled">
+                                Cancelled
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 MAINTENANCE RECORDS
+                 ================================================= -->
+            <section class="card">
+
+                <div class="table-header">
+
+                    <h2>
+                        Maintenance Records
+                    </h2>
+
+                    <span id="recordCount">
+                        0 records
+                    </span>
+
+                </div>
+
+
+                <div class="table-container">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+
+                                <th>ID</th>
+
+                                <th>Equipment</th>
+
+                                <th>Requester</th>
+
+                                <th>Issue</th>
+
+                                <th>Priority</th>
+
+                                <th>Status</th>
+
+                                <th>Date</th>
+
+                                <th>Actions</th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody id="maintenanceTableBody">
+
+                            <tr>
+
+                                <td
+                                    colspan="8"
+                                    class="loading-state">
+
+                                    Loading maintenance records...
+
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 MAINTENANCE DETAILS
+                 ================================================= -->
+            <section
+                id="maintenanceDetailsSection"
+                class="card hidden">
+
+                <h2>Maintenance Details</h2>
+
+                <div id="maintenanceDetails"></div>
+
+
+                <div class="form-actions">
+
+                    <button
+                        type="button"
+                        id="closeDetailsBtn"
+                        class="btn-secondary">
+                        Close
+                    </button>
+
+                </div>
+
+            </section>
+
+
+        </main>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         SUPABASE
+         ===================================================== -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script src="js/supabase.js"></script>
+
+    <script src="js/maintenance.js"></script>
+
+
+</body>
+
+</html>
