@@ -1,158 +1,213 @@
-// =====================================================
-// MAINTENANCE MANAGEMENT
-// Laboratory Asset Management System
-// =====================================================
 
-const { createClient } = supabase;
-const supabaseClient = createClient(
-    "https://ddxurmzmepkbgulbawiw.supabase.co",
-    "YOUR_SUPABASE_ANON_KEY"
-);
+/* =====================================================
+   MAINTENANCE MANAGEMENT
+   Laboratory Asset Management System
+   Uses the shared Supabase client from js/supabase.js
+===================================================== */
+
+const supabaseClient = window.supabaseClient;
 
 let currentUser = null;
 let currentProfile = null;
 let maintenanceRecords = [];
+let equipmentMap = {};
+let profileMap = {};
 
 // -----------------------------------------------------
 // INITIALIZATION
 // -----------------------------------------------------
 document.addEventListener("DOMContentLoaded", async () => {
+    if (!supabaseClient) {
+        console.error("Supabase client is missing. Check js/supabase.js.");
+        showMessage("Supabase connection is not configured.", "error");
+        return;
+    }
+
+    document
+        .getElementById("maintenanceForm")
+        ?.addEventListener("submit", submitMaintenance);
+
+    document
+        .getElementById("searchInput")
+        ?.addEventListener("input", renderMaintenanceRecords);
+
+    document
+        .getElementById("statusFilter")
+        ?.addEventListener("change", renderMaintenanceRecords);
+
+    document
+        .getElementById("closeDetailsBtn")
+        ?.addEventListener("click", closeMaintenanceDetails);
+
+    document
+        .getElementById("cancelMaintenanceBtn")
+        ?.addEventListener("click", resetMaintenanceForm);
+
+    document
+        .getElementById("logoutBtn")
+        ?.addEventListener("click", logout);
+
     await checkAuthentication();
 });
+
+// -----------------------------------------------------
+// ROLE HELPERS
+// -----------------------------------------------------
+function normalizeRole(role) {
+    return String(role || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+}
+
+function getCurrentRole() {
+    return normalizeRole(currentProfile?.role);
+}
+
+function isAdmin() {
+    return getCurrentRole() === "administrator";
+}
+
+function isStaff() {
+    return ["staff", "laboratory_staff"].includes(getCurrentRole());
+}
+
+function canManageMaintenance() {
+    return isAdmin() || isStaff();
+}
+
+function formatRole(role) {
+    const normalized = normalizeRole(role);
+
+    if (normalized === "administrator") return "Administrator";
+
+    if (["staff", "laboratory_staff"].includes(normalized)) {
+        return "Laboratory Staff";
+    }
+
+    if (["requester", "viewer"].includes(normalized)) {
+        return "Requester / Viewer";
+    }
+
+    return role || "Unknown Role";
+}
 
 // -----------------------------------------------------
 // AUTHENTICATION
 // -----------------------------------------------------
 async function checkAuthentication() {
-    const {
-        data: { user },
-        error
-    } = await supabaseClient.auth.getUser();
+    const { data: { user }, error } =
+        await supabaseClient.auth.getUser();
 
     if (error || !user) {
-        window.location.href = "login.html";
+        window.location.replace("login.html");
         return;
     }
 
     currentUser = user;
 
-    const { data: profile, error: profileError } = await supabaseClient
-        .from("profiles")
-        .select("id, full_name, role")
-        .eq("id", user.id)
-        .maybeSingle();
+    const { data: profile, error: profileError } =
+        await supabaseClient
+            .from("profiles")
+            .select("id, full_name, role")
+            .eq("id", user.id)
+            .maybeSingle();
 
     if (profileError || !profile) {
-        await supabaseClient.auth.signOut();
-        window.location.href = "login.html";
+        console.error("Profile loading error:", profileError);
+        showMessage("Unable to load your user profile.", "error");
         return;
     }
 
     currentProfile = profile;
 
-    sessionStorage.setItem("userId", user.id);
-    sessionStorage.setItem("userName", profile.full_name);
-    sessionStorage.setItem("userRole", profile.role);
-    sessionStorage.setItem("userEmail", user.email);
+    const nameElement = document.getElementById("userName");
+    const roleElement = document.getElementById("userRole");
 
-    setupUserInterface();
-    await loadEquipment();
-    await loadMaintenanceRecords();
-}
-
-// -----------------------------------------------------
-// USER INTERFACE
-// -----------------------------------------------------
-function setupUserInterface() {
-    const userName = document.getElementById("userName");
-    const userRole = document.getElementById("userRole");
-
-    if (userName) {
-        userName.textContent = currentProfile.full_name;
+    if (nameElement) {
+        nameElement.textContent = profile.full_name || user.email || "User";
     }
 
-    if (userRole) {
-        userRole.textContent = formatRole(currentProfile.role);
+    if (roleElement) {
+        roleElement.textContent = formatRole(profile.role);
     }
 
-    document.querySelectorAll("[data-access]").forEach(element => {
-        const allowedRoles = element.dataset.access
-            .split(/\s+/)
-            .map(role => role.toLowerCase());
-
-        const currentRole = currentProfile.role.toLowerCase();
-
-        if (!allowedRoles.includes(currentRole)) {
-            element.style.display = "none";
-        }
-    });
-
-    const formSection = document.getElementById("maintenanceFormSection");
+    // Only administrators and laboratory staff may submit
+    // and update maintenance requests on this page.
+    const formSection =
+        document.getElementById("maintenanceFormSection");
 
     if (formSection) {
-        if (
-            currentProfile.role === "administrator" ||
-            currentProfile.role === "staff"
-        ) {
-            formSection.style.display = "block";
-        } else {
-            formSection.style.display = "none";
-        }
+        formSection.style.display =
+            canManageMaintenance() ? "" : "none";
     }
 
-    const logoutButton = document.getElementById("logoutBtn");
-
-    if (logoutButton) {
-        logoutButton.addEventListener("click", logout);
-    }
-}
-
-function formatRole(role) {
-    if (role === "administrator") return "Administrator";
-    if (role === "staff") return "Laboratory Staff";
-    if (role === "requester") return "Requester / Viewer";
-
-    return role;
+    await loadEquipment();
+    await loadMaintenanceRecords();
 }
 
 // -----------------------------------------------------
 // LOAD EQUIPMENT
 // -----------------------------------------------------
 async function loadEquipment() {
-    const equipmentSelect = document.getElementById("equipmentId");
+    const select = document.getElementById("equipmentId");
 
-    if (!equipmentSelect) return;
+    if (!select) return;
+
+    const previousValue = select.value;
 
     const { data, error } = await supabaseClient
         .from("equipment")
         .select("id, equipment_code, equipment_name, status")
-        .order("equipment_code");
+        .order("equipment_code", { ascending: true });
 
     if (error) {
         console.error("Equipment loading error:", error);
-        showMessage("Unable to load equipment.", "error");
+        showMessage("Unable to load equipment: " + error.message, "error");
         return;
     }
 
-    equipmentSelect.innerHTML =
-        '<option value="">Select equipment</option>';
+    select.innerHTML = '<option value="">Select equipment</option>';
 
-    data.forEach(equipment => {
+    (data || []).forEach(equipment => {
         const option = document.createElement("option");
 
         option.value = equipment.id;
-
         option.textContent =
-            `${equipment.equipment_code} - ${equipment.equipment_name} (${equipment.status})`;
+            `${equipment.equipment_code || "No code"} - ` +
+            `${equipment.equipment_name || "Unnamed equipment"} ` +
+            `(${equipment.status || "Unknown status"})`;
 
-        equipmentSelect.appendChild(option);
+        // Do not submit maintenance for equipment that is
+        // already borrowed or already under maintenance.
+        const status = String(equipment.status || "").toLowerCase();
+
+        option.disabled =
+            status === "borrowed" || status === "maintenance";
+
+        select.appendChild(option);
     });
+
+    if (
+        previousValue &&
+        [...select.options].some(option =>
+            option.value === previousValue && !option.disabled
+        )
+    ) {
+        select.value = previousValue;
+    }
 }
 
 // -----------------------------------------------------
 // LOAD MAINTENANCE RECORDS
 // -----------------------------------------------------
 async function loadMaintenanceRecords() {
+    const tbody = document.getElementById("maintenanceTableBody");
+
+    if (tbody) {
+        tbody.innerHTML =
+            '<tr><td colspan="8">Loading maintenance records...</td></tr>';
+    }
 
     const { data, error } = await supabaseClient
         .from("maintenance_requests")
@@ -171,47 +226,42 @@ async function loadMaintenanceRecords() {
     if (error) {
         console.error("Maintenance loading error:", error);
 
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8">
+                        Unable to load records. Check the
+                        maintenance_requests table and its RLS policies.
+                    </td>
+                </tr>
+            `;
+        }
+
         showMessage(
-            "Unable to load maintenance records. Make sure the maintenance_requests table exists.",
+            "Unable to load maintenance records: " + error.message,
             "error"
         );
-
         return;
     }
 
     maintenanceRecords = data || [];
 
-    await renderMaintenanceRecords();
+    await loadRelatedRecords();
+    renderMaintenanceRecords();
 }
 
 // -----------------------------------------------------
-// RENDER TABLE
+// LOAD RELATED EQUIPMENT AND REQUESTER NAMES
 // -----------------------------------------------------
-async function renderMaintenanceRecords() {
-
-    const tbody = document.getElementById("maintenanceTableBody");
-
-    if (!tbody) return;
-
-    tbody.innerHTML = "";
-
-    if (maintenanceRecords.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" style="text-align:center;">
-                    No maintenance records found.
-                </td>
-            </tr>
-        `;
-
-        return;
-    }
+async function loadRelatedRecords() {
+    equipmentMap = {};
+    profileMap = {};
 
     const equipmentIds = [
         ...new Set(
             maintenanceRecords
                 .map(record => record.equipment_id)
-                .filter(Boolean)
+                .filter(id => id !== null && id !== undefined)
         )
     ];
 
@@ -223,132 +273,159 @@ async function renderMaintenanceRecords() {
         )
     ];
 
-    let equipmentMap = {};
-    let profileMap = {};
-
-    if (equipmentIds.length > 0) {
-
-        const { data: equipmentData } = await supabaseClient
+    if (equipmentIds.length) {
+        const { data, error } = await supabaseClient
             .from("equipment")
-            .select("id, equipment_code, equipment_name")
+            .select("id, equipment_code, equipment_name, status")
             .in("id", equipmentIds);
 
-        (equipmentData || []).forEach(item => {
-            equipmentMap[item.id] = item;
-        });
+        if (error) {
+            console.error("Related equipment loading error:", error);
+        } else {
+            (data || []).forEach(item => {
+                equipmentMap[String(item.id)] = item;
+            });
+        }
     }
 
-    if (requesterIds.length > 0) {
-
-        const { data: profileData } = await supabaseClient
+    if (requesterIds.length) {
+        const { data, error } = await supabaseClient
             .from("profiles")
             .select("id, full_name")
             .in("id", requesterIds);
 
-        (profileData || []).forEach(item => {
-            profileMap[item.id] = item;
-        });
+        if (error) {
+            console.error("Requester loading error:", error);
+        } else {
+            (data || []).forEach(item => {
+                profileMap[item.id] = item;
+            });
+        }
     }
+}
 
-    maintenanceRecords.forEach(record => {
+// -----------------------------------------------------
+// FILTER AND RENDER RECORDS
+// -----------------------------------------------------
+function renderMaintenanceRecords() {
+    const tbody = document.getElementById("maintenanceTableBody");
+    if (!tbody) return;
 
-        const equipment = equipmentMap[record.equipment_id];
+    const searchTerm = (
+        document.getElementById("searchInput")?.value || ""
+    ).trim().toLowerCase();
+
+    const selectedStatus =
+        document.getElementById("statusFilter")?.value || "All";
+
+    const filteredRecords = maintenanceRecords.filter(record => {
+        const equipment = equipmentMap[String(record.equipment_id)];
         const requester = profileMap[record.requester_id];
 
-        const row = document.createElement("tr");
+        const searchableText = [
+            record.id,
+            record.equipment_id,
+            equipment?.equipment_code,
+            equipment?.equipment_name,
+            requester?.full_name,
+            record.issue_description,
+            record.priority,
+            record.status,
+            record.created_at
+        ].join(" ").toLowerCase();
 
-        row.innerHTML = `
-            <td>${escapeHTML(record.id)}</td>
+        const matchesSearch = searchableText.includes(searchTerm);
 
-            <td>
-                ${equipment
-                    ? escapeHTML(
-                        `${equipment.equipment_code} - ${equipment.equipment_name}`
-                    )
-                    : "Unknown equipment"
-                }
-            </td>
+        const matchesStatus =
+            selectedStatus === "All" ||
+            record.status === selectedStatus;
 
-            <td>
-                ${requester
-                    ? escapeHTML(requester.full_name)
-                    : "Unknown user"
-                }
-            </td>
-
-            <td>
-                ${escapeHTML(record.issue_description || "-")}
-            </td>
-
-            <td>
-                <span class="status ${getPriorityClass(record.priority)}">
-                    ${escapeHTML(record.priority || "-")}
-                </span>
-            </td>
-
-            <td>
-                <span class="status ${getStatusClass(record.status)}">
-                    ${escapeHTML(record.status || "-")}
-                </span>
-            </td>
-
-            <td>
-                ${formatDate(record.created_at)}
-            </td>
-
-            <td>
-                ${renderActions(record)}
-            </td>
-        `;
-
-        tbody.appendChild(row);
+        return matchesSearch && matchesStatus;
     });
+
+    const count = document.getElementById("recordCount");
+
+    if (count) {
+        count.textContent =
+            `${filteredRecords.length} record(s)`;
+    }
+
+    if (!filteredRecords.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align:center;">
+                    No matching maintenance records found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = filteredRecords.map(record => {
+        const equipment = equipmentMap[String(record.equipment_id)];
+        const requester = profileMap[record.requester_id];
+
+        const equipmentName = equipment
+            ? `${equipment.equipment_code || ""} - ${equipment.equipment_name || ""}`
+            : `Equipment ID ${record.equipment_id ?? "-"}`;
+
+        const requesterName =
+            requester?.full_name || "Unknown user";
+
+        return `
+            <tr>
+                <td>${escapeHTML(record.id)}</td>
+                <td>${escapeHTML(equipmentName)}</td>
+                <td>${escapeHTML(requesterName)}</td>
+                <td>${escapeHTML(record.issue_description || "-")}</td>
+                <td>
+                    <span class="status ${getPriorityClass(record.priority)}">
+                        ${escapeHTML(record.priority || "-")}
+                    </span>
+                </td>
+                <td>
+                    <span class="status ${getStatusClass(record.status)}">
+                        ${escapeHTML(record.status || "-")}
+                    </span>
+                </td>
+                <td>${escapeHTML(formatDate(record.created_at))}</td>
+                <td>${renderActions(record)}</td>
+            </tr>
+        `;
+    }).join("");
 }
 
 // -----------------------------------------------------
 // ACTION BUTTONS
 // -----------------------------------------------------
 function renderActions(record) {
-
-    if (
-        currentProfile.role !== "administrator" &&
-        currentProfile.role !== "staff"
-    ) {
-        return `
-            <button
-                class="btn btn-small"
-                onclick="viewMaintenance(${record.id})">
-                View
-            </button>
-        `;
-    }
+    const id = Number(record.id);
 
     let buttons = `
-        <button
-            class="btn btn-small"
-            onclick="viewMaintenance(${record.id})">
+        <button type="button" class="btn btn-small"
+            onclick="viewMaintenance(${id})">
             View
         </button>
     `;
 
-    if (record.status === "Pending") {
+    if (!canManageMaintenance()) {
+        return buttons;
+    }
 
+    if (record.status === "Pending") {
         buttons += `
-            <button
-                class="btn btn-small"
-                onclick="updateMaintenanceStatus(${record.id}, 'In Progress')">
+            <button type="button" class="btn btn-small"
+                onclick="updateMaintenanceStatus(${id}, 'In Progress')">
                 Start
             </button>
         `;
     }
 
     if (record.status === "In Progress") {
-
         buttons += `
-            <button
-                class="btn btn-small"
-                onclick="updateMaintenanceStatus(${record.id}, 'Resolved')">
-                Resolve
+            <button type="button" class="btn btn-small"
+                onclick="updateMaintenanceStatus(${id}, 'Completed')">
+                Complete
             </button>
         `;
     }
@@ -360,20 +437,24 @@ function renderActions(record) {
 // SUBMIT MAINTENANCE REQUEST
 // -----------------------------------------------------
 async function submitMaintenance(event) {
-
     event.preventDefault();
 
-    if (
-        currentProfile.role !== "administrator" &&
-        currentProfile.role !== "staff"
-    ) {
+    if (!currentUser || !currentProfile) {
+        showMessage("Please sign in again.", "error");
+        return;
+    }
+
+    if (!canManageMaintenance()) {
         showMessage(
             "You do not have permission to submit maintenance requests.",
             "error"
         );
-
         return;
     }
+
+    const form = document.getElementById("maintenanceForm");
+    const submitButton =
+        document.getElementById("submitMaintenanceBtn");
 
     const equipmentId =
         document.getElementById("equipmentId")?.value;
@@ -385,260 +466,309 @@ async function submitMaintenance(event) {
         document.getElementById("priority")?.value;
 
     if (!equipmentId || !issueDescription || !priority) {
-
-        showMessage(
-            "Please complete all required fields.",
-            "error"
-        );
-
+        showMessage("Please complete all required fields.", "error");
         return;
     }
 
-    const { data: equipment, error: equipmentError } =
-        await supabaseClient
-            .from("equipment")
-            .select("id, status")
-            .eq("id", equipmentId)
-            .single();
-
-    if (equipmentError || !equipment) {
-
-        showMessage(
-            "Selected equipment could not be found.",
-            "error"
-        );
-
+    if (issueDescription.length > 5000) {
+        showMessage("The issue description is too long.", "error");
         return;
     }
 
-    const { data, error } = await supabaseClient
-        .from("maintenance_requests")
-        .insert([
-            {
-                equipment_id: Number(equipmentId),
-                requester_id: currentUser.id,
-                issue_description: issueDescription,
-                priority: priority,
-                status: "Pending"
-            }
-        ])
-        .select()
-        .single();
+    if (submitButton) submitButton.disabled = true;
 
-    if (error) {
+    try {
+        const { data: equipment, error: equipmentError } =
+            await supabaseClient
+                .from("equipment")
+                .select("id, status")
+                .eq("id", equipmentId)
+                .maybeSingle();
 
-        console.error(error);
+        if (equipmentError || !equipment) {
+            showMessage("Selected equipment could not be found.", "error");
+            return;
+        }
 
-        showMessage(
-            "Failed to submit maintenance request: " + error.message,
-            "error"
+        const currentStatus =
+            String(equipment.status || "").toLowerCase();
+
+        if (["borrowed", "maintenance"].includes(currentStatus)) {
+            showMessage(
+                "This equipment is borrowed or already under maintenance.",
+                "error"
+            );
+            await loadEquipment();
+            return;
+        }
+
+        const { data: newRecord, error: insertError } =
+            await supabaseClient
+                .from("maintenance_requests")
+                .insert({
+                    equipment_id: Number(equipmentId),
+                    requester_id: currentUser.id,
+                    issue_description: issueDescription,
+                    priority,
+                    status: "Pending"
+                })
+                .select()
+                .single();
+
+        if (insertError) {
+            console.error("Maintenance insert error:", insertError);
+            showMessage(
+                "Failed to submit request: " + insertError.message,
+                "error"
+            );
+            return;
+        }
+
+        // Mark equipment as unavailable while it is under maintenance.
+        const { error: updateEquipmentError } =
+            await supabaseClient
+                .from("equipment")
+                .update({ status: "Maintenance" })
+                .eq("id", equipmentId);
+
+        if (updateEquipmentError) {
+            console.error(
+                "Equipment status update error:",
+                updateEquipmentError
+            );
+
+            showMessage(
+                "Request was saved, but equipment status could not be updated. " +
+                "Please check the equipment record.",
+                "error"
+            );
+        } else {
+            showMessage("Maintenance request submitted successfully.", "success");
+        }
+
+        await createAuditLog(
+            "CREATE",
+            "Maintenance",
+            newRecord.id,
+            `Created maintenance request for equipment ID ${equipmentId}`
         );
 
-        return;
+        form?.reset();
+        await loadEquipment();
+        await loadMaintenanceRecords();
+    } catch (error) {
+        console.error("Unexpected submission error:", error);
+        showMessage("An unexpected error occurred.", "error");
+    } finally {
+        if (submitButton) submitButton.disabled = false;
     }
-
-    // Change equipment to Maintenance
-    const { error: equipmentUpdateError } =
-        await supabaseClient
-            .from("equipment")
-            .update({
-                status: "Maintenance"
-            })
-            .eq("id", equipmentId);
-
-    if (equipmentUpdateError) {
-        console.error(equipmentUpdateError);
-    }
-
-    await createAuditLog(
-        "CREATE",
-        "Maintenance",
-        data.id,
-        `Created maintenance request for equipment ID ${equipmentId}`
-    );
-
-    showMessage(
-        "Maintenance request submitted successfully.",
-        "success"
-    );
-
-    document.getElementById("maintenanceForm")?.reset();
-
-    await loadEquipment();
-    await loadMaintenanceRecords();
 }
 
 // -----------------------------------------------------
 // UPDATE MAINTENANCE STATUS
 // -----------------------------------------------------
 async function updateMaintenanceStatus(id, newStatus) {
-
-    if (
-        currentProfile.role !== "administrator" &&
-        currentProfile.role !== "staff"
-    ) {
+    if (!canManageMaintenance()) {
         showMessage(
             "You do not have permission to update maintenance records.",
             "error"
         );
-
         return;
     }
 
-    const record =
-        maintenanceRecords.find(item => item.id === id);
+    const allowedTransitions = {
+        "Pending": ["In Progress"],
+        "In Progress": ["Completed"]
+    };
+
+    const record = maintenanceRecords.find(
+        item => String(item.id) === String(id)
+    );
 
     if (!record) {
         showMessage("Maintenance record not found.", "error");
         return;
     }
 
-    const updateData = {
-        status: newStatus
-    };
-
-    if (newStatus === "Resolved") {
-        updateData.resolved_at = new Date().toISOString();
-    }
-
-    const { error } = await supabaseClient
-        .from("maintenance_requests")
-        .update(updateData)
-        .eq("id", id);
-
-    if (error) {
-
-        console.error(error);
-
+    if (!(allowedTransitions[record.status] || []).includes(newStatus)) {
         showMessage(
-            "Failed to update maintenance status: " + error.message,
+            `Cannot change status from ${record.status} to ${newStatus}.`,
             "error"
         );
-
         return;
     }
 
-    if (newStatus === "Resolved") {
+    const updateData = { status: newStatus };
 
-        const { error: equipmentError } =
+    if (newStatus === "Completed") {
+        updateData.resolved_at = new Date().toISOString();
+    }
+
+    const { error: requestError } = await supabaseClient
+        .from("maintenance_requests")
+        .update(updateData)
+        .eq("id", id)
+        .eq("status", record.status);
+
+    if (requestError) {
+        console.error("Maintenance status update error:", requestError);
+        showMessage(
+            "Failed to update maintenance request: " + requestError.message,
+            "error"
+        );
+        return;
+    }
+
+    if (newStatus === "Completed") {
+        // Only set Available if the equipment is still marked Maintenance.
+        // Review damaged equipment manually before making it available.
+        const { data: equipment, error: equipmentReadError } =
             await supabaseClient
                 .from("equipment")
-                .update({
-                    status: "Available"
-                })
-                .eq("id", record.equipment_id);
+                .select("id, status")
+                .eq("id", record.equipment_id)
+                .maybeSingle();
 
-        if (equipmentError) {
-            console.error(equipmentError);
+        if (equipmentReadError) {
+            console.error(equipmentReadError);
+            showMessage(
+                "Request completed, but equipment status needs checking.",
+                "error"
+            );
+        } else if (
+            equipment &&
+            String(equipment.status || "").toLowerCase() === "maintenance"
+        ) {
+            const { error: equipmentUpdateError } =
+                await supabaseClient
+                    .from("equipment")
+                    .update({ status: "Available" })
+                    .eq("id", record.equipment_id)
+                    .eq("status", "Maintenance");
+
+            if (equipmentUpdateError) {
+                console.error(equipmentUpdateError);
+                showMessage(
+                    "Request completed, but equipment status could not be updated.",
+                    "error"
+                );
+            }
         }
     }
 
     await createAuditLog(
         "UPDATE",
         "Maintenance",
-        id,
-        `Maintenance status changed to ${newStatus}`
+        record.id,
+        `Maintenance status changed from ${record.status} to ${newStatus}`
     );
+
+    await loadEquipment();
+    await loadMaintenanceRecords();
 
     showMessage(
         `Maintenance request marked as ${newStatus}.`,
         "success"
     );
-
-    await loadEquipment();
-    await loadMaintenanceRecords();
 }
 
 // -----------------------------------------------------
 // VIEW DETAILS
 // -----------------------------------------------------
 function viewMaintenance(id) {
-
-    const record =
-        maintenanceRecords.find(item => item.id === id);
+    const record = maintenanceRecords.find(
+        item => String(item.id) === String(id)
+    );
 
     if (!record) {
         showMessage("Maintenance record not found.", "error");
         return;
     }
 
-    const details = document.getElementById("maintenanceDetails");
+    const equipment = equipmentMap[String(record.equipment_id)];
+    const requester = profileMap[record.requester_id];
 
-    if (!details) return;
+    const details = document.getElementById("maintenanceDetails");
+    const section = document.getElementById("maintenanceDetailsSection");
+
+    if (!details || !section) return;
 
     details.innerHTML = `
-        <h3>Maintenance Details</h3>
-
-        <p>
-            <strong>Request ID:</strong>
-            ${escapeHTML(record.id)}
-        </p>
-
-        <p>
-            <strong>Equipment ID:</strong>
-            ${escapeHTML(record.equipment_id)}
-        </p>
-
-        <p>
-            <strong>Requester ID:</strong>
-            ${escapeHTML(record.requester_id)}
-        </p>
-
-        <p>
-            <strong>Issue:</strong>
-            ${escapeHTML(record.issue_description)}
-        </p>
-
-        <p>
-            <strong>Priority:</strong>
-            ${escapeHTML(record.priority)}
-        </p>
-
-        <p>
-            <strong>Status:</strong>
-            ${escapeHTML(record.status)}
-        </p>
-
-        <p>
-            <strong>Created:</strong>
-            ${formatDate(record.created_at)}
-        </p>
-
-        <p>
-            <strong>Resolved:</strong>
-            ${record.resolved_at
-                ? formatDate(record.resolved_at)
-                : "Not yet resolved"
-            }
-        </p>
+        <p><strong>Request ID:</strong> ${escapeHTML(record.id)}</p>
+        <p><strong>Equipment:</strong> ${
+            escapeHTML(
+                equipment
+                    ? `${equipment.equipment_code || ""} - ${equipment.equipment_name || ""}`
+                    : `Equipment ID ${record.equipment_id ?? "-"}`
+            )
+        }</p>
+        <p><strong>Requester:</strong> ${
+            escapeHTML(requester?.full_name || "Unknown user")
+        }</p>
+        <p><strong>Issue:</strong> ${
+            escapeHTML(record.issue_description || "-")
+        }</p>
+        <p><strong>Priority:</strong> ${
+            escapeHTML(record.priority || "-")
+        }</p>
+        <p><strong>Status:</strong> ${
+            escapeHTML(record.status || "-")
+        }</p>
+        <p><strong>Created:</strong> ${
+            escapeHTML(formatDate(record.created_at))
+        }</p>
+        <p><strong>Resolved:</strong> ${
+            escapeHTML(
+                record.resolved_at
+                    ? formatDate(record.resolved_at)
+                    : "Not yet resolved"
+            )
+        }</p>
     `;
 
-    details.style.display = "block";
+    section.classList.remove("hidden");
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeMaintenanceDetails() {
+    document
+        .getElementById("maintenanceDetailsSection")
+        ?.classList.add("hidden");
+}
+
+// -----------------------------------------------------
+// RESET FORM
+// -----------------------------------------------------
+function resetMaintenanceForm() {
+    document.getElementById("maintenanceForm")?.reset();
+
+    const message = document.getElementById("maintenanceMessage");
+
+    if (message) {
+        message.textContent = "";
+        message.className = "";
+        message.style.display = "none";
+    }
 }
 
 // -----------------------------------------------------
 // AUDIT LOG
 // -----------------------------------------------------
-async function createAuditLog(
-    action,
-    module,
-    recordId,
-    description
-) {
+async function createAuditLog(action, module, recordId, description) {
+    if (!currentUser) return;
 
     const { error } = await supabaseClient
         .from("audit_logs")
-        .insert([
-            {
-                user_id: currentUser.id,
-                action: action,
-                module: module,
-                record_id: recordId,
-                description: description
-            }
-        ]);
+        .insert({
+            user_id: currentUser.id,
+            action,
+            module,
+            record_id: Number(recordId),
+            description
+        });
 
     if (error) {
+        // A failed audit insert should be investigated in Supabase.
         console.error("Audit log error:", error);
     }
 }
@@ -647,35 +777,41 @@ async function createAuditLog(
 // LOGOUT
 // -----------------------------------------------------
 async function logout() {
+    const { error } = await supabaseClient.auth.signOut();
 
-    await supabaseClient.auth.signOut();
+    if (error) {
+        console.error("Logout error:", error);
+        showMessage("Unable to log out. Please try again.", "error");
+        return;
+    }
 
     sessionStorage.clear();
-
-    window.location.href = "login.html";
+    window.location.replace("login.html");
 }
 
 // -----------------------------------------------------
 // HELPERS
 // -----------------------------------------------------
 function formatDate(date) {
-
     if (!date) return "-";
 
-    return new Date(date).toLocaleString();
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) return "-";
+
+    return parsedDate.toLocaleString();
 }
 
 function getStatusClass(status) {
-
     if (status === "Pending") return "status-pending";
     if (status === "In Progress") return "status-approved";
-    if (status === "Resolved") return "status-returned";
+    if (status === "Completed") return "status-returned";
+    if (status === "Cancelled") return "status-rejected";
 
     return "";
 }
 
 function getPriorityClass(priority) {
-
     if (priority === "High") return "status-rejected";
     if (priority === "Medium") return "status-pending";
     if (priority === "Low") return "status-approved";
@@ -684,10 +820,7 @@ function getPriorityClass(priority) {
 }
 
 function escapeHTML(value) {
-
-    if (value === null || value === undefined) {
-        return "";
-    }
+    if (value === null || value === undefined) return "";
 
     return String(value)
         .replace(/&/g, "&amp;")
@@ -698,32 +831,14 @@ function escapeHTML(value) {
 }
 
 function showMessage(message, type = "success") {
-
     const element = document.getElementById("maintenanceMessage");
 
     if (!element) {
-        alert(message);
+        console.log(message);
         return;
     }
 
     element.textContent = message;
     element.className = `message ${type}`;
     element.style.display = "block";
-
-    setTimeout(() => {
-        element.style.display = "none";
-    }, 4000);
-}
-
-// -----------------------------------------------------
-// FORM EVENT
-// -----------------------------------------------------
-const maintenanceForm =
-    document.getElementById("maintenanceForm");
-
-if (maintenanceForm) {
-    maintenanceForm.addEventListener(
-        "submit",
-        submitMaintenance
-    );
 }
