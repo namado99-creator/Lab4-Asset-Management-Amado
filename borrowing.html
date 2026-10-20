@@ -1,382 +1,151 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>Borrowing Requests</title>
-
+  <title>Borrowing Requests | Laboratory Asset Management</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
-
 <body>
-
-  <!-- =====================================================
-       TOPBAR
-       ===================================================== -->
   <header class="topbar">
-
     <div>
       <h2>Laboratory Asset Management</h2>
-      <span id="userInfo">Loading...</span>
+      <span id="userInfo">Loading user...</span>
     </div>
-
-    <button id="logoutBtn" class="logout-btn">
-      Logout
-    </button>
-
+    <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
   </header>
 
-
-  <!-- =====================================================
-       MAIN LAYOUT
-       SIDEBAR + MAIN CONTENT
-       ===================================================== -->
   <div class="layout">
-
-
-    <!-- =================================================
-         SIDEBAR
-         ================================================= -->
     <aside class="sidebar">
-
       <h3>MENU</h3>
-
       <nav>
-
-        <a
-          href="dashboard.html"
-          data-access="administrator staff laboratory_staff requester viewer">
-          Dashboard
-        </a>
-
-        <a
-          href="equipment.html"
-          data-access="administrator staff laboratory_staff requester viewer">
-          Equipment
-        </a>
-
-        <a
-          href="borrowing.html"
-          class="active"
-          data-access="administrator staff laboratory_staff requester viewer">
-          Borrowing Requests
-        </a>
-
-        <a
-          href="returns.html"
-          data-access="administrator staff laboratory_staff">
-          Returns
-        </a>
-
-        <a
-          href="maintenance.html"
-          data-access="administrator staff laboratory_staff">
-          Maintenance
-        </a>
-
-        <a
-          href="audit-logs.html"
-          data-access="administrator">
-          Audit Logs
-        </a>
-
+        <a href="dashboard.html"
+           data-access="administrator staff requester viewer">Dashboard</a>
+        <a href="equipment.html"
+           data-access="administrator staff requester viewer">Equipment</a>
+        <a href="borrowing.html" class="active"
+           data-access="administrator staff requester viewer">Borrowing Requests</a>
+        <a href="returns.html"
+           data-access="administrator staff">Returns</a>
+        <a href="maintenance.html"
+           data-access="administrator staff">Maintenance</a>
+        <a href="audit-logs.html"
+           data-access="administrator">Audit Logs</a>
       </nav>
-
     </aside>
 
-
-    <!-- =================================================
-         MAIN CONTENT
-         ================================================= -->
     <main class="main-content">
-
-
-      <!-- =================================================
-           PAGE HEADER
-           ================================================= -->
       <div class="page-header">
-
         <h1>Borrowing Requests</h1>
-
-        <p>
-          Submit, review, and manage laboratory equipment borrowing requests.
-        </p>
-
+        <p>Submit, review, and manage laboratory equipment borrowing requests.</p>
       </div>
 
+      <p id="pageMessage" role="status" aria-live="polite"></p>
 
-      <!-- =================================================
-           CREATE BORROWING REQUEST
-           ================================================= -->
-      <section
-        id="requestSection"
-        class="card">
-
+      <section id="borrowingFormSection" class="card">
         <h2>Create Borrowing Request</h2>
 
-
         <form id="borrowingForm">
-
-
-          <!-- EQUIPMENT -->
           <div class="form-group">
-
-            <label for="equipmentId">
-              Equipment
-            </label>
-
-            <select
-              id="equipmentId"
-              required>
-
-              <option value="">
-                Select available equipment
-              </option>
-
+            <label for="equipmentSelect">Equipment</label>
+            <select id="equipmentSelect" required>
+              <option value="">Loading available equipment...</option>
             </select>
-
           </div>
 
-
-          <!-- QUANTITY -->
           <div class="form-group">
-
-            <label for="quantity">
-              Quantity
-            </label>
-
-            <input
-              type="number"
-              id="quantity"
-              min="1"
-              value="1"
-              required>
-
+            <label for="quantity">Quantity</label>
+            <input type="number" id="quantity" min="1" value="1" step="1" required>
+            <small id="availableQuantityHint"></small>
           </div>
 
-
-          <!-- PURPOSE -->
           <div class="form-group">
-
-            <label for="purpose">
-              Purpose
-            </label>
-
-            <textarea
-              id="purpose"
-              rows="4"
+            <label for="purpose">Purpose</label>
+            <textarea id="purpose" rows="4"
               placeholder="Enter the purpose of borrowing the equipment..."
-              required></textarea>
-
+              maxlength="2000" required></textarea>
           </div>
 
-
-          <!-- FORM BUTTONS -->
           <div class="form-actions">
-
-            <button
-              type="submit"
-              id="submitRequestBtn"
-              class="btn-primary">
+            <button type="submit" id="submitRequestBtn" class="btn-primary">
               Submit Request
             </button>
-
-            <button
-              type="button"
-              id="cancelRequestBtn"
-              class="btn-secondary hidden">
-              Cancel
+            <button type="button" id="cancelBorrowingBtn" class="btn-secondary">
+              Clear Form
             </button>
-
           </div>
-
         </form>
 
-
-        <!-- MESSAGE -->
-        <p id="borrowingMessage"></p>
-
+        <p id="borrowingMessage" role="status" aria-live="polite"></p>
       </section>
 
-
-      <!-- =================================================
-           SEARCH / FILTER
-           ================================================= -->
       <section class="card">
-
         <h2>Search Requests</h2>
 
-
         <div class="form-group">
-
-          <label for="searchInput">
-            Search
-          </label>
-
-          <input
-            type="text"
-            id="searchInput"
-            placeholder="Search equipment, requester, or purpose...">
-
+          <label for="searchInput">Search</label>
+          <input type="search" id="searchInput"
+            placeholder="Search ID, equipment, requester, or purpose...">
         </div>
 
-
         <div class="form-group">
-
-          <label for="statusFilter">
-            Filter by Status
-          </label>
-
+          <label for="statusFilter">Filter by Status</label>
           <select id="statusFilter">
-
-            <option value="All">
-              All Statuses
-            </option>
-
-            <option value="Pending">
-              Pending
-            </option>
-
-            <option value="Approved">
-              Approved
-            </option>
-
-            <option value="Rejected">
-              Rejected
-            </option>
-
-            <option value="Released">
-              Released
-            </option>
-
-            <option value="Returned">
-              Returned
-            </option>
-
-            <option value="Overdue">
-              Overdue
-            </option>
-
-            <option value="Closed">
-              Closed
-            </option>
-
+            <option value="">All Statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+            <option value="Released">Released</option>
+            <option value="Returned">Returned</option>
+            <option value="Overdue">Overdue</option>
+            <option value="Closed">Closed</option>
           </select>
-
         </div>
-
       </section>
 
-
-      <!-- =================================================
-           BORROWING RECORDS
-           ================================================= -->
       <section class="card">
-
         <div class="table-header">
-
           <h2>Borrowing Records</h2>
-
-          <span id="recordCount">
-            0 records
-          </span>
-
+          <span id="recordCount">0 records</span>
         </div>
-
 
         <div class="table-container">
-
           <table>
-
             <thead>
-
               <tr>
-
                 <th>ID</th>
-
                 <th>Equipment</th>
-
                 <th>Requester</th>
-
                 <th>Quantity</th>
-
                 <th>Purpose</th>
-
                 <th>Request Date</th>
-
                 <th>Status</th>
-
                 <th>Approved By</th>
-
                 <th>Actions</th>
-
               </tr>
-
             </thead>
-
-
             <tbody id="borrowingTableBody">
-
               <tr>
-
-                <td
-                  colspan="9"
-                  class="loading-state">
-
-                  Loading borrowing requests...
-
-                </td>
-
+                <td colspan="9" class="loading-state">Loading borrowing requests...</td>
               </tr>
-
             </tbody>
-
           </table>
-
         </div>
-
       </section>
 
-
-      <!-- =================================================
-           REQUEST DETAILS
-           ================================================= -->
-      <section
-        id="requestDetailsSection"
-        class="card hidden">
-
+      <section id="requestDetailsSection" class="card hidden">
         <h2>Request Details</h2>
-
         <div id="requestDetails"></div>
-
         <div class="form-actions">
-
-          <button
-            type="button"
-            id="closeDetailsBtn"
-            class="btn-secondary">
-            Close
-          </button>
-
+          <button type="button" id="closeDetailsBtn" class="btn-secondary">Close</button>
         </div>
-
       </section>
-
-
     </main>
-
   </div>
 
-
-  <!-- =====================================================
-       SUPABASE
-       ===================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <script src="js/supabase.js"></script>
-
   <script src="js/borrowing.js"></script>
-
 </body>
 </html>
