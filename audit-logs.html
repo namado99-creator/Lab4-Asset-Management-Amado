@@ -1,304 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Audit Logs - Laboratory Asset Management</title>
-
-    <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Logs - Laboratory Asset Management</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
-
-
 <body>
-
-
-    <!-- =====================================================
-         TOPBAR
-         ===================================================== -->
-    <header class="topbar">
-
-        <div>
-            <h2>Laboratory Asset Management</h2>
-            <span>Audit Logs</span>
+  <header class="topbar">
+    <div><h2>Laboratory Asset Management</h2><span>Audit Logs</span></div>
+    <div><span id="userName">User</span> <span id="userRole">Role</span>
+      <button type="button" id="logoutBtn">Logout</button></div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <h3>Navigation</h3>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="equipment.html">Equipment</a>
+      <a href="borrowing.html">Borrowing Requests</a>
+      <a href="returns.html">Returns</a>
+      <a href="maintenance.html">Maintenance</a>
+      <a href="audit-logs.html" class="active">Audit Logs</a>
+    </aside>
+    <main class="main-content">
+      <h1>Audit Logs</h1>
+      <p>Review recorded actions performed in the system.</p>
+      <section class="card">
+        <div class="form-group">
+          <label for="searchInput">Search logs</label>
+          <input id="searchInput" type="search" placeholder="Search action, module, user, description, or ID">
         </div>
-
-
-        <div class="user-area">
-
-            <span id="userName">
-                Loading...
-            </span>
-
-            <span id="userRole">
-                Loading...
-            </span>
-
-            <button
-                id="logoutBtn"
-                class="logout-btn">
-                Logout
-            </button>
-
+        <div class="form-group">
+          <label for="moduleFilter">Filter by module</label>
+          <select id="moduleFilter">
+            <option value="All">All modules</option>
+            <option value="Borrowing">Borrowing</option>
+            <option value="Maintenance">Maintenance</option>
+            <option value="Returns">Returns</option>
+            <option value="Equipment">Equipment</option>
+            <option value="Authentication">Authentication</option>
+          </select>
         </div>
-
-    </header>
-
-
-
-    <!-- =====================================================
-         MAIN LAYOUT
-         SIDEBAR + MAIN CONTENT
-         ===================================================== -->
-    <div class="layout">
-
-
-        <!-- =================================================
-             SIDEBAR
-             ================================================= -->
-        <aside class="sidebar">
-
-            <h3>MENU</h3>
-
-
-            <nav>
-
-                <a
-                    href="dashboard.html"
-                    data-access="administrator staff laboratory_staff requester viewer">
-                    Dashboard
-                </a>
-
-
-                <a
-                    href="equipment.html"
-                    data-access="administrator staff laboratory_staff requester viewer">
-                    Equipment
-                </a>
-
-
-                <a
-                    href="borrowing.html"
-                    data-access="administrator staff laboratory_staff requester viewer">
-                    Borrowing Requests
-                </a>
-
-
-                <a
-                    href="returns.html"
-                    data-access="administrator staff laboratory_staff">
-                    Returns
-                </a>
-
-
-                <a
-                    href="maintenance.html"
-                    data-access="administrator staff laboratory_staff">
-                    Maintenance
-                </a>
-
-
-                <a
-                    href="audit-logs.html"
-                    class="active"
-                    data-access="administrator">
-                    Audit Logs
-                </a>
-
-            </nav>
-
-        </aside>
-
-
-
-        <!-- =================================================
-             MAIN CONTENT
-             ================================================= -->
-        <main class="main-content">
-
-
-            <!-- PAGE HEADER -->
-            <div class="page-header">
-
-                <h1>Audit Logs</h1>
-
-                <p>
-                    View important system activities and transactions.
-                </p>
-
-            </div>
-
-
-
-            <!-- =================================================
-                 SEARCH AND FILTER
-                 ================================================= -->
-            <section class="card">
-
-                <h2>Search Audit Logs</h2>
-
-
-                <div class="form-row">
-
-
-                    <!-- SEARCH -->
-                    <div class="form-group">
-
-                        <label for="searchInput">
-                            Search
-                        </label>
-
-                        <input
-                            type="text"
-                            id="searchInput"
-                            placeholder="Search action, module, or description...">
-
-                    </div>
-
-
-
-                    <!-- MODULE FILTER -->
-                    <div class="form-group">
-
-                        <label for="moduleFilter">
-                            Module
-                        </label>
-
-                        <select id="moduleFilter">
-
-                            <option value="">
-                                All Modules
-                            </option>
-
-                            <option value="Equipment">
-                                Equipment
-                            </option>
-
-                            <option value="Borrowing">
-                                Borrowing
-                            </option>
-
-                            <option value="Returns">
-                                Returns
-                            </option>
-
-                            <option value="Maintenance">
-                                Maintenance
-                            </option>
-
-                            <option value="Authentication">
-                                Authentication
-                            </option>
-
-                        </select>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-
-            <!-- =================================================
-                 MESSAGE
-                 ================================================= -->
-            <div id="auditMessage"></div>
-
-
-
-            <!-- =================================================
-                 AUDIT RECORDS
-                 ================================================= -->
-            <section class="card">
-
-
-                <div class="table-header">
-
-                    <h2>
-                        System Activity
-                    </h2>
-
-                    <span id="logCount">
-                        0 records
-                    </span>
-
-                </div>
-
-
-
-                <div class="table-container">
-
-                    <table>
-
-
-                        <thead>
-
-                            <tr>
-
-                                <th>ID</th>
-
-                                <th>User</th>
-
-                                <th>Action</th>
-
-                                <th>Module</th>
-
-                                <th>Record ID</th>
-
-                                <th>Description</th>
-
-                                <th>Date & Time</th>
-
-                            </tr>
-
-                        </thead>
-
-
-
-                        <tbody id="auditTableBody">
-
-                            <tr>
-
-                                <td
-                                    colspan="7"
-                                    class="loading-state">
-
-                                    Loading audit logs...
-
-                                </td>
-
-                            </tr>
-
-                        </tbody>
-
-
-                    </table>
-
-                </div>
-
-
-            </section>
-
-
-        </main>
-
-
-    </div>
-
-
-
-    <!-- =====================================================
-         SUPABASE
-         ===================================================== -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-    <script src="js/supabase.js"></script>
-
-    <script src="js/audit.js"></script>
-
-
+        <p id="recordCount">0 records</p>
+        <div class="table-container">
+          <table>
+            <thead><tr><th>ID</th><th>User</th><th>Action</th><th>Module</th><th>Record ID</th><th>Description</th><th>Date</th></tr></thead>
+            <tbody id="auditLogsTableBody"><tr><td colspan="7">Loading audit logs...</td></tr></tbody>
+          </table>
+        </div>
+        <p id="pageMessage" role="status"></p>
+      </section>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/audit-logs.js"></script>
 </body>
-
 </html>
