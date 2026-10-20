@@ -1,2725 +1,952 @@
+
+"use strict";
+
 // =====================================================
 // BORROWING REQUEST MANAGEMENT
 // =====================================================
 
+const supabaseClient = window.supabaseClient;
+
 let currentUser = null;
 let currentProfile = null;
 let currentRequests = [];
+let availableEquipment = [];
+let isSubmitting = false;
 
-
-// =====================================================
-// PAGE START
-// =====================================================
-
-document.addEventListener(
-    "DOMContentLoaded",
-    initializeBorrowingPage
-);
-
+document.addEventListener("DOMContentLoaded", initializeBorrowingPage);
 
 // =====================================================
-// INITIALIZE PAGE
+// INITIALIZATION
 // =====================================================
 
 async function initializeBorrowingPage() {
-
-    try {
-
-        // ------------------------------------------------
-        // CHECK AUTHENTICATION
-        // ------------------------------------------------
-
-        const {
-            data,
-            error
-        } = await supabaseClient.auth.getUser();
-
-
-        if (error) {
-
-            console.error(
-                "Authentication error:",
-                error
-            );
-
-            window.location.href =
-                "login.html";
-
-            return;
-        }
-
-
-        if (!data || !data.user) {
-
-            window.location.href =
-                "login.html";
-
-            return;
-        }
-
-
-        currentUser =
-            data.user;
-
-
-        // ------------------------------------------------
-        // LOAD PROFILE
-        // ------------------------------------------------
-
-        const {
-            data: profile,
-            error: profileError
-        } = await supabaseClient
-            .from("profiles")
-            .select(
-                "id, full_name, role"
-            )
-            .eq(
-                "id",
-                currentUser.id
-            )
-            .maybeSingle();
-
-
-        if (profileError) {
-
-            console.error(
-                "Profile error:",
-                profileError
-            );
-
-            showRequestError(
-                profileError.message
-            );
-
-            return;
-        }
-
-
-        if (!profile) {
-
-            showRequestError(
-                "No profile found for this account."
-            );
-
-            return;
-        }
-
-
-        currentProfile =
-            profile;
-
-
-        // ------------------------------------------------
-        // ROLE
-        // ------------------------------------------------
-
-        const role =
-            normalizeRole(
-                profile.role
-            );
-
-
-        // ------------------------------------------------
-        // SESSION
-        // ------------------------------------------------
-
-        sessionStorage.setItem(
-            "userId",
-            currentUser.id
-        );
-
-        sessionStorage.setItem(
-            "userRole",
-            role
-        );
-
-        sessionStorage.setItem(
-            "userName",
-            profile.full_name
-        );
-
-        sessionStorage.setItem(
-            "userEmail",
-            currentUser.email
-        );
-
-
-        // ------------------------------------------------
-        // USER INFO
-        // ------------------------------------------------
-
-        const userInfo =
-            document.getElementById(
-                "userInfo"
-            );
-
-
-        if (userInfo) {
-
-            userInfo.textContent =
-                `${profile.full_name} • ${formatRole(role)}`;
-
-        }
-
-
-        // ------------------------------------------------
-        // ROLE ACCESS
-        // ------------------------------------------------
-
-        setupRoleAccess(
-            role
-        );
-
-
-        // ------------------------------------------------
-        // LOAD AVAILABLE EQUIPMENT
-        // ------------------------------------------------
-
-        await loadAvailableEquipment();
-
-
-        // ------------------------------------------------
-        // LOAD BORROWING REQUESTS
-        // ------------------------------------------------
-
-        await loadBorrowingRequests();
-
-
-        // ------------------------------------------------
-        // FORM SUBMIT
-        // ------------------------------------------------
-
-        const form =
-            document.getElementById(
-                "borrowingForm"
-            );
-
-
-        if (form) {
-
-            form.addEventListener(
-                "submit",
-                submitBorrowingRequest
-            );
-
-        }
-
-
-        // ------------------------------------------------
-        // SEARCH
-        // ------------------------------------------------
-
-        const searchInput =
-            document.getElementById(
-                "searchInput"
-            );
-
-
-        if (searchInput) {
-
-            searchInput.addEventListener(
-                "input",
-                applyFilters
-            );
-
-        }
-
-
-        // ------------------------------------------------
-        // STATUS FILTER
-        // ------------------------------------------------
-
-        const statusFilter =
-            document.getElementById(
-                "statusFilter"
-            );
-
-
-        if (statusFilter) {
-
-            statusFilter.addEventListener(
-                "change",
-                applyFilters
-            );
-
-        }
-
-
-        // ------------------------------------------------
-        // CANCEL
-        // ------------------------------------------------
-
-        const cancelButton =
-            document.getElementById(
-                "cancelBorrowingBtn"
-            );
-
-
-        if (cancelButton) {
-
-            cancelButton.addEventListener(
-                "click",
-                resetBorrowingForm
-            );
-
-        }
-
-
-        // ------------------------------------------------
-        // LOGOUT
-        // ------------------------------------------------
-
-        const logoutButton =
-            document.getElementById(
-                "logoutBtn"
-            );
-
-
-        if (logoutButton) {
-
-            logoutButton.addEventListener(
-                "click",
-                logout
-            );
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Borrowing page error:",
-            error
-        );
-
-        showRequestError(
-            error.message
-        );
-
+  if (!supabaseClient) {
+    showPageMessage("Supabase is not initialized. Check js/supabase.js and script order.", "error");
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient.auth.getUser();
+
+    if (error || !data?.user) {
+      window.location.href = "login.html";
+      return;
     }
 
-}
+    currentUser = data.user;
 
+    const { data: profile, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("id, full_name, role")
+      .eq("id", currentUser.id)
+      .maybeSingle();
 
-// =====================================================
-// ROLE ACCESS
-// =====================================================
-
-function setupRoleAccess(
-    role
-) {
-
-    document
-        .querySelectorAll(
-            "[data-access]"
-        )
-        .forEach(
-            function (element) {
-
-                const allowedRoles =
-                    element
-                        .getAttribute(
-                            "data-access"
-                        )
-                        .split(" ");
-
-
-                if (
-                    allowedRoles.includes(
-                        role
-                    )
-                ) {
-
-                    element.style.display =
-                        "";
-
-                } else {
-
-                    element.style.display =
-                        "none";
-
-                }
-
-            }
-        );
-
-
-    // ------------------------------------------------
-    // Borrowing form
-    // Administrator, Staff, Requester
-    // ------------------------------------------------
-
-    const requestSection =
-        document.getElementById(
-            "borrowingFormSection"
-        );
-
-
-    if (requestSection) {
-
-        if (
-            role === "administrator" ||
-            role === "staff" ||
-            role === "requester"
-        ) {
-
-            requestSection.style.display =
-                "";
-
-        } else {
-
-            requestSection.style.display =
-                "none";
-
-        }
-
+    if (profileError) {
+      throw new Error("Unable to load your profile: " + profileError.message);
     }
 
+    if (!profile) {
+      showPageMessage("No profile was found for this account. Contact your administrator.", "error");
+      return;
+    }
+
+    currentProfile = profile;
+    const role = normalizeRole(profile.role);
+
+    if (!role) {
+      showPageMessage("Your account has an unrecognized role. Contact your administrator.", "error");
+      return;
+    }
+
+    sessionStorage.setItem("userId", currentUser.id);
+    sessionStorage.setItem("userRole", role);
+    sessionStorage.setItem("userName", profile.full_name || "");
+    sessionStorage.setItem("userEmail", currentUser.email || "");
+
+    const userInfo = document.getElementById("userInfo");
+    if (userInfo) {
+      userInfo.textContent =
+        `${profile.full_name || currentUser.email} • ${formatRole(role)}`;
+    }
+
+    setupRoleAccess(role);
+    bindEvents();
+
+    await loadAvailableEquipment();
+    await loadBorrowingRequests();
+  } catch (error) {
+    console.error("Borrowing initialization failed:", error);
+    showPageMessage(error.message || "Unable to initialize the Borrowing page.", "error");
+  }
 }
 
+// =====================================================
+// ROLE HELPERS
+// =====================================================
+
+function normalizeRole(role) {
+  const value = String(role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s/-]+/g, "_");
+
+  if (["admin", "administrator"].includes(value)) return "administrator";
+
+  if (["staff", "laboratory_staff", "lab_staff"].includes(value)) {
+    return "staff";
+  }
+
+  if (["requester", "viewer", "requester_viewer"].includes(value)) {
+    return "requester";
+  }
+
+  return "";
+}
+
+function formatRole(role) {
+  const labels = {
+    administrator: "Administrator",
+    staff: "Laboratory Staff",
+    requester: "Requester / Viewer"
+  };
+
+  return labels[role] || role;
+}
+
+function setupRoleAccess(role) {
+  document.querySelectorAll("[data-access]").forEach(element => {
+    const roles = element.getAttribute("data-access")
+      .split(/\s+/)
+      .map(normalizeRole)
+      .filter(Boolean);
+
+    element.style.display = roles.includes(role) ? "" : "none";
+  });
+
+  const formSection = document.getElementById("borrowingFormSection");
+
+  if (formSection) {
+    formSection.style.display =
+      ["administrator", "staff", "requester"].includes(role) ? "" : "none";
+  }
+}
+
+function canSubmitRequest() {
+  return ["administrator", "staff", "requester"].includes(
+    normalizeRole(currentProfile?.role)
+  );
+}
+
+function canProcessRequests() {
+  return ["administrator", "staff"].includes(
+    normalizeRole(currentProfile?.role)
+  );
+}
+
+// =====================================================
+// EVENTS
+// =====================================================
+
+function bindEvents() {
+  document.getElementById("borrowingForm")
+    ?.addEventListener("submit", submitBorrowingRequest);
+
+  document.getElementById("searchInput")
+    ?.addEventListener("input", applyFilters);
+
+  document.getElementById("statusFilter")
+    ?.addEventListener("change", applyFilters);
+
+  document.getElementById("cancelBorrowingBtn")
+    ?.addEventListener("click", resetBorrowingForm);
+
+  document.getElementById("logoutBtn")
+    ?.addEventListener("click", logout);
+
+  document.getElementById("equipmentSelect")
+    ?.addEventListener("change", updateQuantityHint);
+
+  document.getElementById("closeDetailsBtn")
+    ?.addEventListener("click", () => {
+      document.getElementById("requestDetailsSection")?.classList.add("hidden");
+    });
+}
 
 // =====================================================
 // LOAD AVAILABLE EQUIPMENT
 // =====================================================
 
 async function loadAvailableEquipment() {
+  const select = document.getElementById("equipmentSelect");
+  if (!select) return;
 
-    const equipmentSelect =
-        document.getElementById(
-            "equipmentSelect"
-        );
+  select.replaceChildren(new Option("Loading available equipment...", ""));
 
+  const { data, error } = await supabaseClient
+    .from("equipment")
+    .select("id, equipment_code, equipment_name, quantity, status")
+    .gt("quantity", 0)
+    .order("equipment_code", { ascending: true });
 
-    if (!equipmentSelect) {
-        return;
-    }
+  if (error) {
+    console.error("Equipment loading error:", error);
+    select.replaceChildren(new Option("Unable to load equipment", ""));
+    showRequestMessage("Equipment could not be loaded: " + error.message, "error");
+    return;
+  }
 
+  // Accept harmless capitalization differences in the status value.
+  availableEquipment = (data || []).filter(item =>
+    String(item.status || "").trim().toLowerCase() === "available" &&
+    Number(item.quantity) > 0
+  );
 
-    equipmentSelect.innerHTML = `
-        <option value="">
-            Loading equipment...
-        </option>
-    `;
+  select.replaceChildren(new Option(
+    availableEquipment.length ? "Select available equipment" : "No available equipment",
+    ""
+  ));
 
-
-    const {
-        data,
-        error
-    } = await supabaseClient
-        .from("equipment")
-        .select(
-            "id, equipment_code, equipment_name, quantity, status"
-        )
-        .eq(
-            "status",
-            "Available"
-        )
-        .gt(
-            "quantity",
-            0
-        )
-        .order(
-            "equipment_code",
-            {
-                ascending: true
-            }
-        );
-
-
-    if (error) {
-
-        console.error(
-            "Equipment loading error:",
-            error
-        );
-
-
-        equipmentSelect.innerHTML = `
-            <option value="">
-                Unable to load equipment
-            </option>
-        `;
-
-        return;
-    }
-
-
-    equipmentSelect.innerHTML = `
-        <option value="">
-            Select equipment
-        </option>
-    `;
-
-
-    if (!data || data.length === 0) {
-
-        equipmentSelect.innerHTML += `
-            <option value="">
-                No available equipment
-            </option>
-        `;
-
-        return;
-    }
-
-
-    data.forEach(
-        function (equipment) {
-
-            const option =
-                document.createElement(
-                    "option"
-                );
-
-
-            option.value =
-                equipment.id;
-
-
-            option.textContent =
-                `${equipment.equipment_code} - ${equipment.equipment_name} (${equipment.quantity} available)`;
-
-
-            equipmentSelect.appendChild(
-                option
-            );
-
-        }
+  availableEquipment.forEach(item => {
+    const option = new Option(
+      `${item.equipment_code || "EQ-" + item.id} - ${item.equipment_name} (${item.quantity} available)`,
+      String(item.id)
     );
 
+    select.add(option);
+  });
+
+  updateQuantityHint();
 }
 
+function updateQuantityHint() {
+  const select = document.getElementById("equipmentSelect");
+  const quantityInput = document.getElementById("quantity");
+  const hint = document.getElementById("availableQuantityHint");
+
+  if (!select || !quantityInput || !hint) return;
+
+  const item = availableEquipment.find(
+    equipment => String(equipment.id) === select.value
+  );
+
+  if (!item) {
+    quantityInput.removeAttribute("max");
+    hint.textContent = "";
+    return;
+  }
+
+  quantityInput.max = String(item.quantity);
+  hint.textContent = `Available quantity: ${item.quantity}`;
+}
 
 // =====================================================
-// SUBMIT BORROWING REQUEST
+// SUBMIT REQUEST
 // =====================================================
 
-async function submitBorrowingRequest(
-    event
-) {
+async function submitBorrowingRequest(event) {
+  event.preventDefault();
 
-    event.preventDefault();
+  if (isSubmitting) return;
 
+  if (!currentUser || !currentProfile || !canSubmitRequest()) {
+    showRequestMessage("Your account is not allowed to submit requests.", "error");
+    return;
+  }
 
-    if (!currentUser || !currentProfile) {
+  const select = document.getElementById("equipmentSelect");
+  const quantityInput = document.getElementById("quantity");
+  const purposeInput = document.getElementById("purpose");
+  const submitButton = document.getElementById("submitRequestBtn");
 
-        showRequestMessage(
-            "Please login again.",
-            "error"
-        );
+  const equipmentId = Number(select?.value);
+  const quantity = Number(quantityInput?.value);
+  const purpose = purposeInput?.value.trim();
 
-        return;
+  if (!Number.isSafeInteger(equipmentId) || equipmentId <= 0) {
+    showRequestMessage("Please select available equipment.", "error");
+    return;
+  }
+
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    showRequestMessage("Quantity must be a whole number of at least 1.", "error");
+    return;
+  }
+
+  if (!purpose) {
+    showRequestMessage("Please enter the purpose of borrowing.", "error");
+    return;
+  }
+
+  isSubmitting = true;
+  if (submitButton) submitButton.disabled = true;
+
+  try {
+    // Recheck current database values before creating the request.
+    const { data: equipment, error: equipmentError } = await supabaseClient
+      .from("equipment")
+      .select("id, equipment_code, equipment_name, quantity, status")
+      .eq("id", equipmentId)
+      .maybeSingle();
+
+    if (equipmentError) throw equipmentError;
+
+    if (!equipment) {
+      throw new Error("The selected equipment no longer exists.");
     }
 
-
-    const equipmentSelect =
-        document.getElementById(
-            "equipmentSelect"
-        );
-
-
-    const quantityInput =
-        document.getElementById(
-            "quantity"
-        );
-
-
-    const purposeInput =
-        document.getElementById(
-            "purpose"
-        );
-
-
-    if (
-        !equipmentSelect ||
-        !quantityInput ||
-        !purposeInput
-    ) {
-
-        showRequestMessage(
-            "Borrowing form is incomplete.",
-            "error"
-        );
-
-        return;
+    if (String(equipment.status || "").trim().toLowerCase() !== "available") {
+      await loadAvailableEquipment();
+      throw new Error("This equipment is not available for borrowing.");
     }
 
-
-    const equipmentId =
-        parseInt(
-            equipmentSelect.value
-        );
-
-
-    const quantity =
-        parseInt(
-            quantityInput.value
-        );
-
-
-    const purpose =
-        purposeInput.value.trim();
-
-
-    // ------------------------------------------------
-    // VALIDATION
-    // ------------------------------------------------
-
-    if (
-        !equipmentId ||
-        !quantity ||
-        quantity < 1 ||
-        !purpose
-    ) {
-
-        showRequestMessage(
-            "Please complete all required fields.",
-            "error"
-        );
-
-        return;
+    if (quantity > Number(equipment.quantity)) {
+      await loadAvailableEquipment();
+      throw new Error(`Only ${equipment.quantity} unit(s) are available.`);
     }
 
+    const { data: request, error: requestError } = await supabaseClient
+      .from("borrowing_requests")
+      .insert({
+        equipment_id: equipmentId,
+        requester_id: currentUser.id,
+        quantity,
+        purpose,
+        request_date: new Date().toISOString(),
+        status: "Pending"
+      })
+      .select("id, equipment_id, requester_id, quantity, purpose, request_date, status, approved_by, approved_at, released_at, returned_at")
+      .single();
 
-    // ------------------------------------------------
-    // CHECK EQUIPMENT
-    // ------------------------------------------------
-
-    const {
-        data: equipment,
-        error: equipmentError
-    } = await supabaseClient
-        .from("equipment")
-        .select(
-            "id, equipment_code, equipment_name, quantity, status"
-        )
-        .eq(
-            "id",
-            equipmentId
-        )
-        .single();
-
-
-    if (equipmentError) {
-
-        console.error(
-            "Equipment check error:",
-            equipmentError
-        );
-
-        showRequestMessage(
-            equipmentError.message,
-            "error"
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // BR-A4-01
-    // Only Available equipment may be requested
-    // ------------------------------------------------
-
-    if (
-        equipment.status !== "Available"
-    ) {
-
-        showRequestMessage(
-            "This equipment is not available.",
-            "error"
-        );
-
-        await loadAvailableEquipment();
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // BR-A4-09
-    // Maintenance equipment cannot be borrowed
-    // ------------------------------------------------
-
-    if (
-        equipment.status === "Maintenance"
-    ) {
-
-        showRequestMessage(
-            "Equipment under maintenance cannot be borrowed.",
-            "error"
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // CHECK QUANTITY
-    // ------------------------------------------------
-
-    if (
-        quantity > equipment.quantity
-    ) {
-
-        showRequestMessage(
-            `Only ${equipment.quantity} unit(s) are available.`,
-            "error"
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // INSERT REQUEST
-    // ------------------------------------------------
-
-    const {
-        data: request,
-        error: requestError
-    } = await supabaseClient
-        .from("borrowing_requests")
-        .insert({
-
-            equipment_id:
-                equipmentId,
-
-            requester_id:
-                currentUser.id,
-
-            quantity:
-                quantity,
-
-            purpose:
-                purpose,
-
-            status:
-                "Pending"
-
-        })
-        .select()
-        .single();
-
-
-    if (requestError) {
-
-        console.error(
-            "Borrowing request error:",
-            requestError
-        );
-
-        showRequestMessage(
-            requestError.message,
-            "error"
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // AUDIT LOG
-    // ------------------------------------------------
+    if (requestError) throw requestError;
 
     await createAuditLog(
-        "CREATE",
-        "Borrowing Requests",
-        request.id,
-        `Created borrowing request for ${equipment.equipment_code}`
+      "CREATE",
+      "Borrowing Requests",
+      request.id,
+      `Created borrowing request for ${equipment.equipment_code || equipment.equipment_name}`
     );
 
-
-    showRequestMessage(
-        "Borrowing request submitted successfully.",
-        "success"
-    );
-
-
+    showRequestMessage("Borrowing request submitted successfully.", "success");
     resetBorrowingForm();
-
-
-    await loadAvailableEquipment();
-
     await loadBorrowingRequests();
-
+  } catch (error) {
+    console.error("Submit request error:", error);
+    showRequestMessage(error.message || "Unable to submit the request.", "error");
+  } finally {
+    isSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
+  }
 }
-
 
 // =====================================================
 // LOAD BORROWING REQUESTS
+// Uses columns visible in the provided database diagram.
 // =====================================================
 
 async function loadBorrowingRequests() {
+  const tableBody = document.getElementById("borrowingTableBody");
+  const recordCount = document.getElementById("recordCount");
 
-    const tableBody =
-        document.getElementById(
-            "borrowingTableBody"
-        );
+  if (!tableBody) return;
 
+  tableBody.innerHTML =
+    '<tr><td colspan="9" class="loading-state">Loading borrowing requests...</td></tr>';
 
-    const recordCount =
-        document.getElementById(
-            "recordCount"
-        );
+  const role = normalizeRole(currentProfile?.role);
 
+  let query = supabaseClient
+    .from("borrowing_requests")
+    .select("id, equipment_id, requester_id, quantity, purpose, request_date, status, approved_by, approved_at, released_at, returned_at")
+    .order("request_date", { ascending: false });
 
-    if (!tableBody) {
+  if (role === "requester") {
+    query = query.eq("requester_id", currentUser.id);
+  }
 
-        console.error(
-            "borrowingTableBody not found."
-        );
+  const { data, error } = await query;
 
-        return;
-    }
-
-
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="9" class="loading-state">
-                Loading borrowing requests...
-            </td>
-        </tr>
-    `;
-
-
-    // ------------------------------------------------
-    // BASE QUERY
-    // ------------------------------------------------
-
-    let query =
-        supabaseClient
-            .from("borrowing_requests")
-            .select(
-                "id, equipment_id, requester_id, quantity, purpose, request_date, status, approved_by, approved_at, released_at, returned_at, created_at"
-            )
-            .order(
-                "created_at",
-                {
-                    ascending: false
-                }
-            );
-
-
-    // ------------------------------------------------
-    // REQUESTER ONLY SEES OWN REQUESTS
-    // ------------------------------------------------
-
-    const role =
-        normalizeRole(
-            currentProfile?.role
-        );
-
-
-    if (
-        role === "requester"
-    ) {
-
-        query =
-            query.eq(
-                "requester_id",
-                currentUser.id
-            );
-
-    }
-
-
-    const {
-        data,
-        error
-    } = await query;
-
-
-    if (error) {
-
-        console.error(
-            "Borrowing query error:",
-            error
-        );
-
-        showRequestError(
-            error.message
-        );
-
-        return;
-    }
-
-
-    currentRequests =
-        data || [];
-
-
-    // ------------------------------------------------
-    // LOAD RELATED DATA
-    // ------------------------------------------------
-
-    const equipmentIds =
-        [
-            ...new Set(
-                currentRequests
-                    .map(
-                        request =>
-                            request.equipment_id
-                    )
-                    .filter(
-                        id => id !== null
-                    )
-            )
-        ];
-
-
-    const requesterIds =
-        [
-            ...new Set(
-                currentRequests
-                    .map(
-                        request =>
-                            request.requester_id
-                    )
-                    .filter(
-                        id => id !== null
-                    )
-            )
-        ];
-
-
-    const approverIds =
-        [
-            ...new Set(
-                currentRequests
-                    .map(
-                        request =>
-                            request.approved_by
-                    )
-                    .filter(
-                        id => id !== null
-                    )
-            )
-        ];
-
-
-    let equipmentMap = {};
-    let profileMap = {};
-
-
-    // ------------------------------------------------
-    // EQUIPMENT
-    // ------------------------------------------------
-
-    if (
-        equipmentIds.length > 0
-    ) {
-
-        const {
-            data: equipmentData,
-            error: equipmentError
-        } = await supabaseClient
-            .from("equipment")
-            .select(
-                "id, equipment_code, equipment_name"
-            )
-            .in(
-                "id",
-                equipmentIds
-            );
-
-
-        if (equipmentError) {
-
-            console.error(
-                "Equipment relation error:",
-                equipmentError
-            );
-
-        } else {
-
-            (equipmentData || [])
-                .forEach(
-                    equipment => {
-
-                        equipmentMap[
-                            equipment.id
-                        ] =
-                            equipment;
-
-                    }
-                );
-
-        }
-
-    }
-
-
-    // ------------------------------------------------
-    // PROFILES
-    // ------------------------------------------------
-
-    const allProfileIds =
-        [
-            ...new Set(
-                [
-                    ...requesterIds,
-                    ...approverIds
-                ]
-            )
-        ];
-
-
-    if (
-        allProfileIds.length > 0
-    ) {
-
-        const {
-            data: profileData,
-            error: profileError
-        } = await supabaseClient
-            .from("profiles")
-            .select(
-                "id, full_name"
-            )
-            .in(
-                "id",
-                allProfileIds
-            );
-
-
-        if (profileError) {
-
-            console.error(
-                "Profile relation error:",
-                profileError
-            );
-
-        } else {
-
-            (profileData || [])
-                .forEach(
-                    profile => {
-
-                        profileMap[
-                            profile.id
-                        ] =
-                            profile;
-
-                    }
-                );
-
-        }
-
-    }
-
-
-    // ------------------------------------------------
-    // COUNT
-    // ------------------------------------------------
-
-    if (recordCount) {
-
-        recordCount.textContent =
-            `${currentRequests.length} record${currentRequests.length === 1 ? "" : "s"}`;
-
-    }
-
-
-    // ------------------------------------------------
-    // NO RECORDS
-    // ------------------------------------------------
-
-    if (
-        currentRequests.length === 0
-    ) {
-
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="9">
-                    No borrowing requests found.
-                </td>
-            </tr>
-        `;
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // STORE RELATED DATA
-    // ------------------------------------------------
-
-    currentRequests =
-        currentRequests.map(
-            request => ({
-
-                ...request,
-
-                equipmentInfo:
-                    equipmentMap[
-                        request.equipment_id
-                    ] || null,
-
-                requesterInfo:
-                    profileMap[
-                        request.requester_id
-                    ] || null,
-
-                approverInfo:
-                    request.approved_by
-                        ? profileMap[
-                            request.approved_by
-                        ] || null
-                        : null
-
-            })
-        );
-
-
-    renderBorrowingRequests(
-        currentRequests
-    );
-
-}
-
-
-// =====================================================
-// RENDER REQUESTS
-// =====================================================
-
-function renderBorrowingRequests(
-    requests
-) {
-
-    const tableBody =
-        document.getElementById(
-            "borrowingTableBody"
-        );
-
-
-    if (!tableBody) {
-        return;
-    }
-
-
+  if (error) {
+    console.error("Borrowing query error:", error);
     tableBody.innerHTML = "";
-
-
-    const role =
-        normalizeRole(
-            currentProfile?.role
-        );
-
-
-    requests.forEach(
-        function (request) {
-
-            const row =
-                document.createElement(
-                    "tr"
-                );
-
-
-            const equipment =
-                request.equipmentInfo;
-
-
-            const requester =
-                request.requesterInfo;
-
-
-            const approver =
-                request.approverInfo;
-
-
-            const requestDate =
-                formatDate(
-                    request.request_date ||
-                    request.created_at
-                );
-
-
-            let actions = `
-                <button
-                    type="button"
-                    class="view-btn"
-                    onclick="viewBorrowingRequest(${request.id})">
-                    View
-                </button>
-            `;
-
-
-            // ------------------------------------------------
-            // ADMIN APPROVAL
-            // ------------------------------------------------
-
-            if (
-                role === "administrator" &&
-                request.status === "Pending"
-            ) {
-
-                actions += `
-
-                    <button
-                        type="button"
-                        class="approve-btn"
-                        onclick="approveRequest(${request.id})">
-                        Approve
-                    </button>
-
-                    <button
-                        type="button"
-                        class="reject-btn"
-                        onclick="rejectRequest(${request.id})">
-                        Reject
-                    </button>
-
-                `;
-
-            }
-
-
-            // ------------------------------------------------
-            // RELEASE
-            // Admin and Staff
-            // ------------------------------------------------
-
-            if (
-                (
-                    role === "administrator" ||
-                    role === "staff"
-                ) &&
-                request.status === "Approved"
-            ) {
-
-                actions += `
-
-                    <button
-                        type="button"
-                        class="release-btn"
-                        onclick="releaseRequest(${request.id})">
-                        Release
-                    </button>
-
-                `;
-
-            }
-
-
-            // ------------------------------------------------
-            // RETURN
-            // Admin and Staff
-            // ------------------------------------------------
-
-            if (
-                (
-                    role === "administrator" ||
-                    role === "staff"
-                ) &&
-                request.status === "Released"
-            ) {
-
-                actions += `
-
-                    <button
-                        type="button"
-                        class="return-btn"
-                        onclick="returnRequest(${request.id})">
-                        Return
-                    </button>
-
-                `;
-
-            }
-
-
-            row.innerHTML = `
-
-                <td>
-                    #${request.id}
-                </td>
-
-                <td>
-                    ${
-                        equipment
-                            ? escapeHTML(
-                                equipment.equipment_code +
-                                " - " +
-                                equipment.equipment_name
-                            )
-                            : "Unknown equipment"
-                    }
-                </td>
-
-                <td>
-                    ${
-                        requester
-                            ? escapeHTML(
-                                requester.full_name
-                            )
-                            : "Unknown requester"
-                    }
-                </td>
-
-                <td>
-                    ${request.quantity}
-                </td>
-
-                <td>
-                    ${escapeHTML(
-                        request.purpose
-                    )}
-                </td>
-
-                <td>
-                    ${requestDate}
-                </td>
-
-                <td>
-                    <span class="status ${getStatusClass(request.status)}">
-                        ${escapeHTML(
-                            request.status
-                        )}
-                    </span>
-                </td>
-
-                <td>
-                    ${
-                        approver
-                            ? escapeHTML(
-                                approver.full_name
-                            )
-                            : "-"
-                    }
-                </td>
-
-                <td>
-                    ${actions}
-                </td>
-
-            `;
-
-
-            tableBody.appendChild(
-                row
-            );
-
-        }
-    );
-
-}
-
-
-// =====================================================
-// APPROVE REQUEST
-// Administrator ONLY
-// =====================================================
-
-async function approveRequest(
-    requestId
-) {
-
-    const role =
-        normalizeRole(
-            currentProfile?.role
-        );
-
-
-    if (
-        role !== "administrator"
-    ) {
-
-        alert(
-            "Only the Administrator can approve requests."
-        );
-
-        return;
-    }
-
-
-    const request =
-        currentRequests.find(
-            item =>
-                item.id === requestId
-        );
-
-
-    if (!request) {
-
-        alert(
-            "Request not found."
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // BR-A4-02
-    // Staff/Admin cannot approve own request
-    // ------------------------------------------------
-
-    if (
-        request.requester_id ===
-        currentUser.id
-    ) {
-
-        alert(
-            "You cannot approve your own request."
-        );
-
-        return;
-    }
-
-
-    if (
-        request.status !== "Pending"
-    ) {
-
-        alert(
-            "Only Pending requests can be approved."
-        );
-
-        return;
-    }
-
-
-    const confirmed =
-        confirm(
-            `Approve borrowing request #${requestId}?`
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    const {
-        error
-    } = await supabaseClient
-        .from("borrowing_requests")
-        .update({
-
-            status:
-                "Approved",
-
-            approved_by:
-                currentUser.id,
-
-            approved_at:
-                new Date().toISOString()
-
-        })
-        .eq(
-            "id",
-            requestId
-        )
-        .eq(
-            "status",
-            "Pending"
-        );
-
-
-    if (error) {
-
-        console.error(
-            "Approve error:",
-            error
-        );
-
-        alert(
-            error.message
-        );
-
-        return;
-    }
-
-
-    await createAuditLog(
-        "APPROVE",
-        "Borrowing Requests",
-        requestId,
-        `Approved borrowing request #${requestId}`
-    );
-
-
-    alert(
-        "Borrowing request approved."
-    );
-
-
-    await loadBorrowingRequests();
-
-}
-
-
-// =====================================================
-// REJECT REQUEST
-// Administrator ONLY
-// =====================================================
-
-async function rejectRequest(
-    requestId
-) {
-
-    const role =
-        normalizeRole(
-            currentProfile?.role
-        );
-
-
-    if (
-        role !== "administrator"
-    ) {
-
-        alert(
-            "Only the Administrator can reject requests."
-        );
-
-        return;
-    }
-
-
-    const request =
-        currentRequests.find(
-            item =>
-                item.id === requestId
-        );
-
-
-    if (!request) {
-
-        alert(
-            "Request not found."
-        );
-
-        return;
-    }
-
-
-    if (
-        request.requester_id ===
-        currentUser.id
-    ) {
-
-        alert(
-            "You cannot reject your own request."
-        );
-
-        return;
-    }
-
-
-    if (
-        request.status !== "Pending"
-    ) {
-
-        alert(
-            "Only Pending requests can be rejected."
-        );
-
-        return;
-    }
-
-
-    const confirmed =
-        confirm(
-            `Reject borrowing request #${requestId}?`
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    const {
-        error
-    } = await supabaseClient
-        .from("borrowing_requests")
-        .update({
-
-            status:
-                "Rejected",
-
-            approved_by:
-                currentUser.id,
-
-            approved_at:
-                new Date().toISOString()
-
-        })
-        .eq(
-            "id",
-            requestId
-        )
-        .eq(
-            "status",
-            "Pending"
-        );
-
-
-    if (error) {
-
-        console.error(
-            "Reject error:",
-            error
-        );
-
-        alert(
-            error.message
-        );
-
-        return;
-    }
-
-
-    await createAuditLog(
-        "REJECT",
-        "Borrowing Requests",
-        requestId,
-        `Rejected borrowing request #${requestId}`
-    );
-
-
-    alert(
-        "Borrowing request rejected."
-    );
-
-
-    await loadBorrowingRequests();
-
-}
-
-
-// =====================================================
-// RELEASE REQUEST
-// Admin / Staff
-// =====================================================
-
-async function releaseRequest(
-    requestId
-) {
-
-    const role =
-        normalizeRole(
-            currentProfile?.role
-        );
-
-
-    if (
-        role !== "administrator" &&
-        role !== "staff"
-    ) {
-
-        alert(
-            "You are not allowed to release equipment."
-        );
-
-        return;
-    }
-
-
-    const request =
-        currentRequests.find(
-            item =>
-                item.id === requestId
-        );
-
-
-    if (!request) {
-
-        alert(
-            "Request not found."
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // BR-A4-04
-    // Only Approved may be released
-    // ------------------------------------------------
-
-    if (
-        request.status !== "Approved"
-    ) {
-
-        alert(
-            "Only Approved requests can be released."
-        );
-
-        return;
-    }
-
-
-    const equipment =
-        request.equipmentInfo;
-
-
-    if (!equipment) {
-
-        alert(
-            "Equipment information not found."
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // GET CURRENT EQUIPMENT
-    // ------------------------------------------------
-
-    const {
-        data: currentEquipment,
-        error: equipmentError
-    } = await supabaseClient
-        .from("equipment")
-        .select(
-            "id, equipment_code, equipment_name, quantity, status"
-        )
-        .eq(
-            "id",
-            request.equipment_id
-        )
-        .single();
-
+    showTableError(error.message);
+    return;
+  }
+
+  const requests = data || [];
+
+  const equipmentIds = [...new Set(
+    requests.map(item => item.equipment_id).filter(id => id != null)
+  )];
+
+  const profileIds = [...new Set(
+    requests.flatMap(item => [item.requester_id, item.approved_by])
+      .filter(Boolean)
+  )];
+
+  const equipmentMap = {};
+  const profileMap = {};
+
+  if (equipmentIds.length) {
+    const { data: equipmentRows, error: equipmentError } = await supabaseClient
+      .from("equipment")
+      .select("id, equipment_code, equipment_name, quantity, status")
+      .in("id", equipmentIds);
 
     if (equipmentError) {
-
-        console.error(
-            "Equipment error:",
-            equipmentError
-        );
-
-        alert(
-            equipmentError.message
-        );
-
-        return;
+      console.error("Related equipment error:", equipmentError);
+    } else {
+      (equipmentRows || []).forEach(item => {
+        equipmentMap[String(item.id)] = item;
+      });
     }
+  }
 
+  if (profileIds.length) {
+    const { data: profiles, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", profileIds);
 
-    // ------------------------------------------------
-    // EQUIPMENT MUST BE AVAILABLE
-    // ------------------------------------------------
-
-    if (
-        currentEquipment.status !==
-        "Available"
-    ) {
-
-        alert(
-            "This equipment is no longer available."
-        );
-
-        return;
+    if (profileError) {
+      console.error("Related profile error:", profileError);
+    } else {
+      (profiles || []).forEach(item => {
+        profileMap[item.id] = item;
+      });
     }
+  }
 
+  currentRequests = requests.map(request => ({
+    ...request,
+    equipmentInfo: equipmentMap[String(request.equipment_id)] || null,
+    requesterInfo: profileMap[request.requester_id] || null,
+    approverInfo: request.approved_by
+      ? profileMap[request.approved_by] || null
+      : null
+  }));
 
-    if (
-        currentEquipment.quantity <
-        request.quantity
-    ) {
+  if (recordCount) {
+    recordCount.textContent = `${currentRequests.length} record${currentRequests.length === 1 ? "" : "s"}`;
+  }
 
-        alert(
-            "There is not enough equipment available."
-        );
-
-        return;
-    }
-
-
-    const confirmed =
-        confirm(
-            `Release equipment for request #${requestId}?`
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // UPDATE EQUIPMENT
-    // BR-A4-05
-    // Released equipment becomes Borrowed
-    // ------------------------------------------------
-
-    const {
-        error: updateEquipmentError
-    } = await supabaseClient
-        .from("equipment")
-        .update({
-
-            status:
-                "Borrowed"
-
-        })
-        .eq(
-            "id",
-            currentEquipment.id
-        );
-
-
-    if (updateEquipmentError) {
-
-        console.error(
-            "Equipment update error:",
-            updateEquipmentError
-        );
-
-        alert(
-            "Unable to update equipment: " +
-            updateEquipmentError.message
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // UPDATE REQUEST
-    // ------------------------------------------------
-
-    const {
-        error: requestError
-    } = await supabaseClient
-        .from("borrowing_requests")
-        .update({
-
-            status:
-                "Released",
-
-            released_at:
-                new Date().toISOString()
-
-        })
-        .eq(
-            "id",
-            requestId
-        )
-        .eq(
-            "status",
-            "Approved"
-        );
-
-
-    if (requestError) {
-
-        console.error(
-            "Release request error:",
-            requestError
-        );
-
-        // Try to restore equipment
-        await supabaseClient
-            .from("equipment")
-            .update({
-                status: "Available"
-            })
-            .eq(
-                "id",
-                currentEquipment.id
-            );
-
-
-        alert(
-            requestError.message
-        );
-
-        return;
-    }
-
-
-    await createAuditLog(
-        "RELEASE",
-        "Borrowing Requests",
-        requestId,
-        `Released equipment ${currentEquipment.equipment_code} for request #${requestId}`
-    );
-
-
-    alert(
-        "Equipment released successfully."
-    );
-
-
-    await loadAvailableEquipment();
-
-    await loadBorrowingRequests();
-
+  applyFilters();
 }
-
 
 // =====================================================
-// RETURN REQUEST
-// Admin / Staff
-// =====================================================
-
-async function returnRequest(
-    requestId
-) {
-
-    const role =
-        normalizeRole(
-            currentProfile?.role
-        );
-
-
-    if (
-        role !== "administrator" &&
-        role !== "staff"
-    ) {
-
-        alert(
-            "You are not allowed to process returns."
-        );
-
-        return;
-    }
-
-
-    const request =
-        currentRequests.find(
-            item =>
-                item.id === requestId
-        );
-
-
-    if (!request) {
-
-        alert(
-            "Request not found."
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // BR-A4-08
-    // Returned cannot be processed twice
-    // ------------------------------------------------
-
-    if (
-        request.status !== "Released"
-    ) {
-
-        alert(
-            "Only Released requests can be returned."
-        );
-
-        return;
-    }
-
-
-    const equipment =
-        request.equipmentInfo;
-
-
-    if (!equipment) {
-
-        alert(
-            "Equipment information not found."
-        );
-
-        return;
-    }
-
-
-    const confirmed =
-        confirm(
-            `Process return for request #${requestId}?`
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // GET CURRENT EQUIPMENT
-    // ------------------------------------------------
-
-    const {
-        data: currentEquipment,
-        error: equipmentError
-    } = await supabaseClient
-        .from("equipment")
-        .select(
-            "id, equipment_code, quantity, status"
-        )
-        .eq(
-            "id",
-            request.equipment_id
-        )
-        .single();
-
-
-    if (equipmentError) {
-
-        console.error(
-            "Equipment error:",
-            equipmentError
-        );
-
-        alert(
-            equipmentError.message
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // BR-A4-06
-    // Returned equipment becomes Available
-    // unless damaged
-    // ------------------------------------------------
-
-    let newEquipmentStatus =
-        "Available";
-
-
-    if (
-        currentEquipment.status ===
-        "Damaged"
-    ) {
-
-        newEquipmentStatus =
-            "Damaged";
-
-    }
-
-
-    // ------------------------------------------------
-    // UPDATE EQUIPMENT
-    // ------------------------------------------------
-
-    const {
-        error: equipmentUpdateError
-    } = await supabaseClient
-        .from("equipment")
-        .update({
-
-            status:
-                newEquipmentStatus
-
-        })
-        .eq(
-            "id",
-            currentEquipment.id
-        );
-
-
-    if (equipmentUpdateError) {
-
-        console.error(
-            "Equipment return error:",
-            equipmentUpdateError
-        );
-
-        alert(
-            "Unable to update equipment: " +
-            equipmentUpdateError.message
-        );
-
-        return;
-    }
-
-
-    // ------------------------------------------------
-    // UPDATE BORROWING REQUEST
-    // ------------------------------------------------
-
-    const {
-        error: requestError
-    } = await supabaseClient
-        .from("borrowing_requests")
-        .update({
-
-            status:
-                "Returned",
-
-            returned_at:
-                new Date().toISOString()
-
-        })
-        .eq(
-            "id",
-            requestId
-        )
-        .eq(
-            "status",
-            "Released"
-        );
-
-
-    if (requestError) {
-
-        console.error(
-            "Return request error:",
-            requestError
-        );
-
-        // Restore previous equipment state
-        await supabaseClient
-            .from("equipment")
-            .update({
-
-                status:
-                    currentEquipment.status
-
-            })
-            .eq(
-                "id",
-                currentEquipment.id
-            );
-
-
-        alert(
-            requestError.message
-        );
-
-        return;
-    }
-
-
-    await createAuditLog(
-        "RETURN",
-        "Borrowing Requests",
-        requestId,
-        `Returned equipment ${currentEquipment.equipment_code} for request #${requestId}`
-    );
-
-
-    alert(
-        "Equipment returned successfully."
-    );
-
-
-    await loadAvailableEquipment();
-
-    await loadBorrowingRequests();
-
-}
-
-
-// =====================================================
-// VIEW REQUEST
-// =====================================================
-
-function viewBorrowingRequest(
-    requestId
-) {
-
-    const request =
-        currentRequests.find(
-            item =>
-                item.id === requestId
-        );
-
-
-    if (!request) {
-
-        alert(
-            "Request not found."
-        );
-
-        return;
-    }
-
-
-    const equipment =
-        request.equipmentInfo;
-
-
-    const requester =
-        request.requesterInfo;
-
-
-    const approver =
-        request.approverInfo;
-
-
-    const details = `
-
-Borrowing Request #${request.id}
-
-Equipment:
-${
-    equipment
-        ? equipment.equipment_code +
-          " - " +
-          equipment.equipment_name
-        : "Unknown"
-}
-
-Requester:
-${
-    requester
-        ? requester.full_name
-        : "Unknown"
-}
-
-Quantity:
-${request.quantity}
-
-Purpose:
-${request.purpose}
-
-Request Date:
-${formatDate(
-    request.request_date ||
-    request.created_at
-)}
-
-Status:
-${request.status}
-
-Approved By:
-${
-    approver
-        ? approver.full_name
-        : "-"
-}
-
-Approved At:
-${formatDate(
-    request.approved_at
-)}
-
-Released At:
-${formatDate(
-    request.released_at
-)}
-
-Returned At:
-${formatDate(
-    request.returned_at
-)}
-`;
-
-
-    alert(
-        details
-    );
-
-}
-
-
-// =====================================================
-// FILTERS
+// RENDER TABLE AND FILTERS
 // =====================================================
 
 function applyFilters() {
+  const search = (document.getElementById("searchInput")?.value || "")
+    .trim()
+    .toLowerCase();
 
-    const searchInput =
-        document.getElementById(
-            "searchInput"
-        );
+  const selectedStatus = document.getElementById("statusFilter")?.value || "";
 
+  const filtered = currentRequests.filter(request => {
+    const equipment = request.equipmentInfo;
+    const requester = request.requesterInfo;
 
-    const statusFilter =
-        document.getElementById(
-            "statusFilter"
-        );
+    const text = [
+      request.id,
+      equipment?.equipment_code,
+      equipment?.equipment_name,
+      requester?.full_name,
+      request.purpose,
+      request.status
+    ].filter(value => value != null).join(" ").toLowerCase();
 
+    return text.includes(search) &&
+      (!selectedStatus || request.status === selectedStatus);
+  });
 
-    const search =
-        searchInput
-            ? searchInput.value
-                .trim()
-                .toLowerCase()
-            : "";
+  renderBorrowingRequests(filtered);
 
-
-    const selectedStatus =
-        statusFilter
-            ? statusFilter.value
-            : "";
-
-
-    const filtered =
-        currentRequests.filter(
-            function (request) {
-
-                const equipment =
-                    request.equipmentInfo;
-
-
-                const requester =
-                    request.requesterInfo;
-
-
-                const searchableText = [
-
-                    request.id,
-
-                    equipment
-                        ? equipment.equipment_code
-                        : "",
-
-                    equipment
-                        ? equipment.equipment_name
-                        : "",
-
-                    requester
-                        ? requester.full_name
-                        : "",
-
-                    request.purpose,
-
-                    request.status
-
-                ]
-                    .filter(
-                        value =>
-                            value !== null &&
-                            value !== undefined
-                    )
-                    .join(" ")
-                    .toLowerCase();
-
-
-                const matchesSearch =
-                    search === "" ||
-                    searchableText.includes(
-                        search
-                    );
-
-
-                const matchesStatus =
-                    selectedStatus === "" ||
-                    request.status ===
-                        selectedStatus;
-
-
-                return (
-                    matchesSearch &&
-                    matchesStatus
-                );
-
-            }
-        );
-
-
-    renderBorrowingRequests(
-        filtered
-    );
-
-
-    const recordCount =
-        document.getElementById(
-            "recordCount"
-        );
-
-
-    if (recordCount) {
-
-        recordCount.textContent =
-            `${filtered.length} record${filtered.length === 1 ? "" : "s"}`;
-
-    }
-
+  const count = document.getElementById("recordCount");
+  if (count) {
+    count.textContent = `${filtered.length} record${filtered.length === 1 ? "" : "s"}`;
+  }
 }
 
+function renderBorrowingRequests(requests) {
+  const body = document.getElementById("borrowingTableBody");
+  if (!body) return;
+
+  body.replaceChildren();
+
+  if (!requests.length) {
+    const row = body.insertRow();
+    const cell = row.insertCell();
+    cell.colSpan = 9;
+    cell.textContent = "No borrowing requests found.";
+    return;
+  }
+
+  const role = normalizeRole(currentProfile?.role);
+
+  requests.forEach(request => {
+    const row = body.insertRow();
+    const equipment = request.equipmentInfo;
+    const requester = request.requesterInfo;
+    const approver = request.approverInfo;
+
+    addCell(row, `#${request.id}`);
+    addCell(row, equipment
+      ? `${equipment.equipment_code || "EQ-" + equipment.id} - ${equipment.equipment_name || ""}`
+      : "Equipment unavailable");
+    addCell(row, requester?.full_name || "Unknown requester");
+    addCell(row, request.quantity);
+    addCell(row, request.purpose || "");
+    addCell(row, formatDate(request.request_date));
+
+    const statusCell = row.insertCell();
+    const badge = document.createElement("span");
+    badge.className = `status ${getStatusClass(request.status)}`;
+    badge.textContent = request.status || "Unknown";
+    statusCell.appendChild(badge);
+
+    addCell(row, approver?.full_name || "-");
+
+    const actionsCell = row.insertCell();
+
+    addActionButton(actionsCell, "View", "view-btn", () => viewBorrowingRequest(request.id));
+
+    if (role === "administrator" && request.status === "Pending") {
+      addActionButton(actionsCell, "Approve", "approve-btn", () => approveRequest(request.id));
+      addActionButton(actionsCell, "Reject", "reject-btn", () => rejectRequest(request.id));
+    }
+
+    if (canProcessRequests() && request.status === "Approved") {
+      addActionButton(actionsCell, "Release", "release-btn", () => releaseRequest(request.id));
+    }
+
+    if (canProcessRequests() && request.status === "Released") {
+      addActionButton(actionsCell, "Return", "return-btn", () => returnRequest(request.id));
+    }
+  });
+}
+
+function addCell(row, value) {
+  const cell = row.insertCell();
+  cell.textContent = value == null ? "" : String(value);
+  return cell;
+}
+
+function addActionButton(container, label, className, callback) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener("click", callback);
+  container.appendChild(button);
+}
 
 // =====================================================
-// RESET FORM
+// APPROVE / REJECT
+// Administrator only; database RLS must enforce this too.
+// =====================================================
+
+async function approveRequest(requestId) {
+  await changePendingRequest(requestId, "Approved", "APPROVE");
+}
+
+async function rejectRequest(requestId) {
+  await changePendingRequest(requestId, "Rejected", "REJECT");
+}
+
+async function changePendingRequest(requestId, newStatus, action) {
+  if (normalizeRole(currentProfile?.role) !== "administrator") {
+    alert("Only the Administrator can approve or reject requests.");
+    return;
+  }
+
+  const request = currentRequests.find(item => Number(item.id) === Number(requestId));
+
+  if (!request || request.status !== "Pending") {
+    alert("Only existing Pending requests can be processed.");
+    return;
+  }
+
+  if (request.requester_id === currentUser.id) {
+    alert("You cannot approve or reject your own request.");
+    return;
+  }
+
+  if (!confirm(`${newStatus} borrowing request #${requestId}?`)) return;
+
+  const { data, error } = await supabaseClient
+    .from("borrowing_requests")
+    .update({
+      status: newStatus,
+      approved_by: currentUser.id,
+      approved_at: new Date().toISOString()
+    })
+    .eq("id", requestId)
+    .eq("status", "Pending")
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error(`${action} error:`, error);
+    alert(`Unable to update request: ${error.message}`);
+    return;
+  }
+
+  if (!data) {
+    alert("The request was changed by another user or your permissions do not allow this operation.");
+    await loadBorrowingRequests();
+    return;
+  }
+
+  await createAuditLog(action, "Borrowing Requests", requestId,
+    `${newStatus} borrowing request #${requestId}`);
+
+  alert(`Request ${newStatus.toLowerCase()} successfully.`);
+  await loadBorrowingRequests();
+}
+
+// =====================================================
+// RELEASE
+// =====================================================
+
+async function releaseRequest(requestId) {
+  if (!canProcessRequests()) {
+    alert("Only Administrator or Laboratory Staff can release equipment.");
+    return;
+  }
+
+  const request = currentRequests.find(item => Number(item.id) === Number(requestId));
+
+  if (!request || request.status !== "Approved") {
+    alert("Only Approved requests can be released.");
+    return;
+  }
+
+  const { data: equipment, error: equipmentError } = await supabaseClient
+    .from("equipment")
+    .select("id, equipment_code, equipment_name, quantity, status")
+    .eq("id", request.equipment_id)
+    .maybeSingle();
+
+  if (equipmentError || !equipment) {
+    alert(equipmentError?.message || "Equipment record not found.");
+    return;
+  }
+
+  if (String(equipment.status || "").trim().toLowerCase() !== "available") {
+    alert("This equipment is no longer available.");
+    return;
+  }
+
+  if (Number(equipment.quantity) < Number(request.quantity)) {
+    alert("There is not enough equipment available.");
+    return;
+  }
+
+  if (!confirm(`Release equipment for request #${requestId}?`)) return;
+
+  // The current schema has one status field for the equipment record.
+  // It cannot track per-unit availability independently.
+  const { data: changedEquipment, error: equipmentUpdateError } = await supabaseClient
+    .from("equipment")
+    .update({ status: "Borrowed" })
+    .eq("id", equipment.id)
+    .eq("status", equipment.status)
+    .select("id")
+    .maybeSingle();
+
+  if (equipmentUpdateError || !changedEquipment) {
+    alert(equipmentUpdateError?.message || "Equipment status changed. Refresh and try again.");
+    return;
+  }
+
+  const { data: changedRequest, error: requestError } = await supabaseClient
+    .from("borrowing_requests")
+    .update({
+      status: "Released",
+      released_at: new Date().toISOString()
+    })
+    .eq("id", requestId)
+    .eq("status", "Approved")
+    .select("id")
+    .maybeSingle();
+
+  if (requestError || !changedRequest) {
+    // Best-effort rollback. For full transactional safety, use a database RPC.
+    await supabaseClient
+      .from("equipment")
+      .update({ status: equipment.status })
+      .eq("id", equipment.id)
+      .eq("status", "Borrowed");
+
+    alert(requestError?.message || "Request status changed. Refresh and try again.");
+    await loadBorrowingRequests();
+    return;
+  }
+
+  await createAuditLog("RELEASE", "Borrowing Requests", requestId,
+    `Released ${equipment.equipment_code || equipment.equipment_name} for request #${requestId}`);
+
+  alert("Equipment released successfully.");
+  await loadAvailableEquipment();
+  await loadBorrowingRequests();
+}
+
+// =====================================================
+// RETURN
+// Ask whether the returned equipment is damaged.
+// =====================================================
+
+async function returnRequest(requestId) {
+  if (!canProcessRequests()) {
+    alert("Only Administrator or Laboratory Staff can process returns.");
+    return;
+  }
+
+  const request = currentRequests.find(item => Number(item.id) === Number(requestId));
+
+  if (!request || request.status !== "Released") {
+    alert("Only Released requests can be returned.");
+    return;
+  }
+
+  const condition = prompt(
+    "Enter the returned equipment condition: Available or Damaged",
+    "Available"
+  );
+
+  if (condition === null) return;
+
+  const normalizedCondition = condition.trim().toLowerCase();
+
+  if (!["available", "damaged"].includes(normalizedCondition)) {
+    alert('Enter either "Available" or "Damaged".');
+    return;
+  }
+
+  if (!confirm(`Process return for request #${requestId} as ${normalizedCondition}?`)) {
+    return;
+  }
+
+  const { data: equipment, error: equipmentError } = await supabaseClient
+    .from("equipment")
+    .select("id, equipment_code, equipment_name, status")
+    .eq("id", request.equipment_id)
+    .maybeSingle();
+
+  if (equipmentError || !equipment) {
+    alert(equipmentError?.message || "Equipment record not found.");
+    return;
+  }
+
+  const newStatus = normalizedCondition === "damaged" ? "Damaged" : "Available";
+
+  const { data: changedRequest, error: requestError } = await supabaseClient
+    .from("borrowing_requests")
+    .update({
+      status: "Returned",
+      returned_at: new Date().toISOString()
+    })
+    .eq("id", requestId)
+    .eq("status", "Released")
+    .select("id")
+    .maybeSingle();
+
+  if (requestError || !changedRequest) {
+    alert(requestError?.message || "This request was already processed or your permissions do not allow it.");
+    await loadBorrowingRequests();
+    return;
+  }
+
+  const { error: equipmentUpdateError } = await supabaseClient
+    .from("equipment")
+    .update({ status: newStatus })
+    .eq("id", equipment.id);
+
+  if (equipmentUpdateError) {
+    console.error("Equipment status update failed:", equipmentUpdateError);
+    alert("The request was marked Returned, but equipment status could not be updated. Contact your administrator.");
+    await loadBorrowingRequests();
+    return;
+  }
+
+  await createAuditLog("RETURN", "Borrowing Requests", requestId,
+    `Returned ${equipment.equipment_code || equipment.equipment_name}; condition: ${newStatus}`);
+
+  alert("Equipment return processed successfully.");
+  await loadAvailableEquipment();
+  await loadBorrowingRequests();
+}
+
+// =====================================================
+// VIEW REQUEST DETAILS
+// =====================================================
+
+function viewBorrowingRequest(requestId) {
+  const request = currentRequests.find(item => Number(item.id) === Number(requestId));
+
+  if (!request) {
+    alert("Request not found.");
+    return;
+  }
+
+  const details = document.getElementById("requestDetails");
+  const section = document.getElementById("requestDetailsSection");
+
+  if (!details || !section) return;
+
+  details.replaceChildren();
+
+  const equipment = request.equipmentInfo;
+  const requester = request.requesterInfo;
+  const approver = request.approverInfo;
+
+  const fields = [
+    ["Request ID", request.id],
+    ["Equipment", equipment
+      ? `${equipment.equipment_code || ""} - ${equipment.equipment_name || ""}`
+      : "Unknown equipment"],
+    ["Requester", requester?.full_name || "Unknown requester"],
+    ["Quantity", request.quantity],
+    ["Purpose", request.purpose],
+    ["Request Date", formatDate(request.request_date)],
+    ["Status", request.status],
+    ["Approved By", approver?.full_name || "-"],
+    ["Approved At", formatDate(request.approved_at)],
+    ["Released At", formatDate(request.released_at)],
+    ["Returned At", formatDate(request.returned_at)]
+  ];
+
+  fields.forEach(([label, value]) => {
+    const paragraph = document.createElement("p");
+    const strong = document.createElement("strong");
+    strong.textContent = `${label}: `;
+    paragraph.append(strong, document.createTextNode(String(value ?? "-")));
+    details.appendChild(paragraph);
+  });
+
+  section.classList.remove("hidden");
+  section.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// =====================================================
+// AUDIT LOGGING
+// =====================================================
+
+async function createAuditLog(action, module, recordId, description) {
+  try {
+    const { error } = await supabaseClient
+      .from("audit_logs")
+      .insert({
+        user_id: currentUser.id,
+        action,
+        module,
+        record_id: recordId,
+        description
+      });
+
+    if (error) {
+      console.error("Audit log insertion failed:", error);
+      showPageMessage(
+        "The operation completed, but its audit entry could not be saved. Contact your administrator.",
+        "error"
+      );
+    }
+  } catch (error) {
+    console.error("Audit logging exception:", error);
+  }
+}
+
+// =====================================================
+// FORM RESET
 // =====================================================
 
 function resetBorrowingForm() {
+  document.getElementById("borrowingForm")?.reset();
 
-    const form =
-        document.getElementById(
-            "borrowingForm"
-        );
+  const quantity = document.getElementById("quantity");
+  if (quantity) quantity.value = "1";
 
-
-    if (form) {
-
-        form.reset();
-
-    }
-
-
-    const quantity =
-        document.getElementById(
-            "quantity"
-        );
-
-
-    if (quantity) {
-
-        quantity.value =
-            1;
-
-    }
-
+  updateQuantityHint();
+  clearMessage("borrowingMessage");
 }
 
-
 // =====================================================
-// AUDIT LOG
+// MESSAGES AND ERRORS
 // =====================================================
 
-async function createAuditLog(
-    action,
-    module,
-    recordId,
-    description
-) {
-
-    try {
-
-        const {
-            error
-        } = await supabaseClient
-            .from("audit_logs")
-            .insert({
-
-                user_id:
-                    currentUser.id,
-
-                action:
-                    action,
-
-                module:
-                    module,
-
-                record_id:
-                    recordId,
-
-                description:
-                    description
-
-            });
-
-
-        if (error) {
-
-            console.error(
-                "Audit log error:",
-                error
-            );
-
-        }
-
-    } catch (error) {
-
-        console.error(
-            "Audit log exception:",
-            error
-        );
-
-    }
-
+function showRequestMessage(message, type) {
+  showMessage("borrowingMessage", message, type);
 }
 
-
-// =====================================================
-// REQUEST MESSAGE
-// =====================================================
-
-function showRequestMessage(
-    message,
-    type
-) {
-
-    const element =
-        document.getElementById(
-            "borrowingMessage"
-        );
-
-
-    if (!element) {
-
-        alert(
-            message
-        );
-
-        return;
-    }
-
-
-    element.textContent =
-        message;
-
-
-    element.className =
-        type;
-
-
-    setTimeout(
-        function () {
-
-            element.textContent =
-                "";
-
-            element.className =
-                "";
-
-        },
-        4000
-    );
-
+function showPageMessage(message, type) {
+  showMessage("pageMessage", message, type);
 }
 
+function showMessage(elementId, message, type) {
+  const element = document.getElementById(elementId);
 
-// =====================================================
-// TABLE ERROR
-// =====================================================
+  if (!element) {
+    console[type === "error" ? "error" : "log"](message);
+    return;
+  }
 
-function showRequestError(
-    message
-) {
-
-    const tableBody =
-        document.getElementById(
-            "borrowingTableBody"
-        );
-
-
-    const recordCount =
-        document.getElementById(
-            "recordCount"
-        );
-
-
-    if (recordCount) {
-
-        recordCount.textContent =
-            "Error";
-
-    }
-
-
-    if (tableBody) {
-
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="9">
-                    <strong>
-                        Error loading borrowing requests.
-                    </strong>
-
-                    <br>
-
-                    <small>
-                        ${escapeHTML(message)}
-                    </small>
-                </td>
-            </tr>
-        `;
-
-    }
-
+  element.textContent = message;
+  element.className = type || "";
 }
 
-
-// =====================================================
-// DATE FORMAT
-// =====================================================
-
-function formatDate(
-    value
-) {
-
-    if (!value) {
-        return "-";
-    }
-
-
-    const date =
-        new Date(value);
-
-
-    if (
-        Number.isNaN(
-            date.getTime()
-        )
-    ) {
-
-        return "-";
-
-    }
-
-
-    return date.toLocaleString();
-
+function clearMessage(elementId) {
+  const element = document.getElementById(elementId);
+  if (element) {
+    element.textContent = "";
+    element.className = "";
+  }
 }
 
+function showTableError(message) {
+  const body = document.getElementById("borrowingTableBody");
+  const count = document.getElementById("recordCount");
 
-// =====================================================
-// STATUS CLASS
-// =====================================================
+  if (count) count.textContent = "Error";
 
-function getStatusClass(
-    status
-) {
-
-    if (!status) {
-        return "";
-    }
-
-
-    return status
-        .toString()
-        .toLowerCase()
-        .replace(
-            /\s+/g,
-            "-"
-        );
-
+  if (body) {
+    body.replaceChildren();
+    const row = body.insertRow();
+    const cell = row.insertCell();
+    cell.colSpan = 9;
+    cell.textContent = `Unable to load borrowing requests: ${message}`;
+  }
 }
 
-
 // =====================================================
-// NORMALIZE ROLE
+// UTILITIES
 // =====================================================
 
-function normalizeRole(
-    role
-) {
+function formatDate(value) {
+  if (!value) return "-";
 
-    if (!role) {
-        return "";
-    }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
 
-
-    return role
-        .toString()
-        .trim()
-        .toLowerCase()
-        .replace(
-            /\s+/g,
-            "_"
-        );
-
+  return date.toLocaleString();
 }
 
-
-// =====================================================
-// FORMAT ROLE
-// =====================================================
-
-function formatRole(
-    role
-) {
-
-    if (
-        role === "administrator"
-    ) {
-
-        return "Administrator";
-
-    }
-
-
-    if (
-        role === "staff"
-    ) {
-
-        return "Laboratory Staff";
-
-    }
-
-
-    if (
-        role === "requester"
-    ) {
-
-        return "Requester";
-
-    }
-
-
-    return role || "";
-
+function getStatusClass(status) {
+  return String(status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
 }
-
-
-// =====================================================
-// LOGOUT
-// =====================================================
 
 async function logout() {
+  const { error } = await supabaseClient.auth.signOut();
 
-    const {
-        error
-    } = await supabaseClient.auth.signOut();
+  if (error) {
+    console.error("Logout error:", error);
+    alert("Unable to log out: " + error.message);
+    return;
+  }
 
-
-    if (error) {
-
-        console.error(
-            "Logout error:",
-            error
-        );
-
-        alert(
-            "Unable to logout."
-        );
-
-        return;
-    }
-
-
-    sessionStorage.clear();
-
-
-    window.location.href =
-        "login.html";
-
-}
-
-
-// =====================================================
-// ESCAPE HTML
-// =====================================================
-
-function escapeHTML(
-    value
-) {
-
-    if (
-        value === null ||
-        value === undefined
-    ) {
-
-        return "";
-    }
-
-
-    return String(value)
-
-        .replace(
-            /&/g,
-            "&amp;"
-        )
-
-        .replace(
-            /</g,
-            "&lt;"
-        )
-
-        .replace(
-            />/g,
-            "&gt;"
-        )
-
-        .replace(
-            /"/g,
-            "&quot;"
-        )
-
-        .replace(
-            /'/g,
-            "&#039;"
-        );
-
+  sessionStorage.clear();
+  window.location.href = "login.html";
 }
