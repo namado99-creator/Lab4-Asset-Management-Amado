@@ -1,574 +1,566 @@
-// =====================================================
-// RETURNS MANAGEMENT
-// Laboratory Asset Management System
-// =====================================================
 
-const { createClient } = supabase;
-
-const supabaseClient = createClient(
-    "https://ddxurmzmepkbgulbawiw.supabase.co",
-    "YOUR_SUPABASE_ANON_KEY"
-);
+/* =====================================================
+   RETURNS MANAGEMENT
+   Laboratory Asset Management System
+   Uses the shared client from js/supabase.js
+   ===================================================== */
 
 let currentUser = null;
 let currentProfile = null;
 let returnRecords = [];
+let equipmentMap = {};
+let requesterMap = {};
+
+document.addEventListener("DOMContentLoaded", initializeReturnsPage);
 
 // -----------------------------------------------------
-// INITIALIZATION
+// INITIALIZE
 // -----------------------------------------------------
-document.addEventListener("DOMContentLoaded", async () => {
-    await checkAuthentication();
-});
+async function initializeReturnsPage() {
+    try {
+        if (!window.supabaseClient) {
+            throw new Error(
+                "Supabase client not found. Check js/supabase.js and script order."
+            );
+        }
+
+        const { data, error } =
+            await window.supabaseClient.auth.getUser();
+
+        if (error) throw error;
+
+        if (!data?.user) {
+            window.location.href = "login.html";
+            return;
+        }
+
+        currentUser = data.user;
+
+        const { data: profile, error: profileError } =
+            await window.supabaseClient
+                .from("profiles")
+                .select("id, full_name, role")
+                .eq("id", currentUser.id)
+                .maybeSingle();
+
+        if (profileError) throw profileError;
+
+        if (!profile) {
+            showMessage(
+                "No profile was found for this account. Contact the administrator.",
+                "error"
+            );
+            return;
+        }
+
+        currentProfile = profile;
+
+        const role = normalizeRole(profile.role);
+
+        sessionStorage.setItem("userId", currentUser.id);
+        sessionStorage.setItem("userName", profile.full_name || "");
+        sessionStorage.setItem("userRole", role);
+        sessionStorage.setItem("userEmail", currentUser.email || "");
+
+        setupUserInterface(role);
+        setupEventListeners();
+
+        await loadReturnRecords();
+
+    } catch (error) {
+        console.error("Returns initialization error:", error);
+        showMessage(
+            `Unable to initialize Returns: ${error.message || "Unknown error"}`,
+            "error"
+        );
+    }
+}
 
 // -----------------------------------------------------
-// AUTHENTICATION
+// ROLE NORMALIZATION
 // -----------------------------------------------------
-async function checkAuthentication() {
+function normalizeRole(role) {
+    const value = String(role || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
 
-    const {
-        data: { user },
-        error
-    } = await supabaseClient.auth.getUser();
-
-    if (error || !user) {
-        window.location.href = "login.html";
-        return;
+    if (["admin", "administrator"].includes(value)) {
+        return "administrator";
     }
 
-    currentUser = user;
-
-    const { data: profile, error: profileError } =
-        await supabaseClient
-            .from("profiles")
-            .select("id, full_name, role")
-            .eq("id", user.id)
-            .maybeSingle();
-
-    if (profileError || !profile) {
-
-        await supabaseClient.auth.signOut();
-
-        window.location.href = "login.html";
-
-        return;
+    if ([
+        "staff",
+        "laboratory_staff",
+        "lab_staff"
+    ].includes(value)) {
+        return "staff";
     }
 
-    currentProfile = profile;
+    if ([
+        "requester",
+        "viewer",
+        "requester_viewer"
+    ].includes(value)) {
+        return "requester";
+    }
 
-    sessionStorage.setItem("userId", user.id);
-    sessionStorage.setItem("userName", profile.full_name);
-    sessionStorage.setItem("userRole", profile.role);
-    sessionStorage.setItem("userEmail", user.email);
+    return value;
+}
 
-    setupUserInterface();
+function formatRole(role) {
+    const normalized = normalizeRole(role);
 
-    await loadReturnRecords();
+    if (normalized === "administrator") return "Administrator";
+    if (normalized === "staff") return "Laboratory Staff";
+    if (normalized === "requester") return "Requester / Viewer";
+
+    return role || "Unknown role";
 }
 
 // -----------------------------------------------------
 // USER INTERFACE
 // -----------------------------------------------------
-function setupUserInterface() {
-
-    const userName =
-        document.getElementById("userName");
-
-    const userRole =
-        document.getElementById("userRole");
+function setupUserInterface(role) {
+    const userName = document.getElementById("userName");
+    const userRole = document.getElementById("userRole");
 
     if (userName) {
         userName.textContent =
-            currentProfile.full_name;
+            currentProfile.full_name || currentUser.email || "User";
     }
 
     if (userRole) {
-        userRole.textContent =
-            formatRole(currentProfile.role);
+        userRole.textContent = formatRole(role);
     }
 
-    document.querySelectorAll("[data-access]")
-        .forEach(element => {
+    document.querySelectorAll("[data-access]").forEach(element => {
+        const allowedRoles = element
+            .getAttribute("data-access")
+            .split(/\s+/)
+            .map(normalizeRole);
 
-            const allowedRoles =
-                element.dataset.access
-                    .split(/\s+/)
-                    .map(role => role.toLowerCase());
+        element.style.display =
+            allowedRoles.includes(role) ? "" : "none";
+    });
 
-            const currentRole =
-                currentProfile.role.toLowerCase();
-
-            if (!allowedRoles.includes(currentRole)) {
-                element.style.display = "none";
-            }
-        });
-
-    const logoutButton =
-        document.getElementById("logoutBtn");
-
-    if (logoutButton) {
-        logoutButton.addEventListener(
-            "click",
-            logout
-        );
-    }
-}
-
-function formatRole(role) {
-
-    if (role === "administrator") {
-        return "Administrator";
-    }
-
-    if (role === "staff") {
-        return "Laboratory Staff";
-    }
-
-    if (role === "requester") {
-        return "Requester / Viewer";
-    }
-
-    return role;
-}
-
-// -----------------------------------------------------
-// LOAD RETURNABLE REQUESTS
-// -----------------------------------------------------
-async function loadReturnRecords() {
-
-    const { data, error } =
-        await supabaseClient
-            .from("borrowing_requests")
-            .select(`
-                id,
-                equipment_id,
-                requester_id,
-                quantity,
-                purpose,
-                request_date,
-                status,
-                approved_by,
-                released_at,
-                returned_at,
-                created_at
-            `)
-            .eq("status", "Released")
-            .order("released_at", {
-                ascending: false
-            });
-
-    if (error) {
-
-        console.error(
-            "Return records error:",
-            error
-        );
-
+    // Only administrators and laboratory staff may use this page.
+    if (!["administrator", "staff"].includes(role)) {
         showMessage(
-            "Unable to load return records.",
+            "You do not have permission to access Returns.",
             "error"
         );
 
+        setTimeout(() => {
+            window.location.href = "dashboard.html";
+        }, 1500);
+    }
+}
+
+function setupEventListeners() {
+    document.getElementById("logoutBtn")
+        ?.addEventListener("click", logout);
+
+    document.getElementById("searchInput")
+        ?.addEventListener("input", renderReturnRecords);
+
+    document.getElementById("statusFilter")
+        ?.addEventListener("change", renderReturnRecords);
+
+    document.getElementById("closeDetailsBtn")
+        ?.addEventListener("click", () => {
+            const section =
+                document.getElementById("returnDetailsSection");
+
+            section?.classList.add("hidden");
+        });
+}
+
+// -----------------------------------------------------
+// LOAD REQUESTS
+// The Returns page shows Released requests that can be
+// returned and Returned requests for history.
+// -----------------------------------------------------
+async function loadReturnRecords() {
+    const tbody = document.getElementById("returnsTableBody");
+    const count = document.getElementById("recordCount");
+
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="loading-state">
+                    Loading return records...
+                </td>
+            </tr>
+        `;
+    }
+
+    const { data, error } = await window.supabaseClient
+        .from("borrowing_requests")
+        .select(`
+            id,
+            equipment_id,
+            requester_id,
+            quantity,
+            purpose,
+            request_date,
+            status,
+            released_at,
+            returned_at,
+            created_at
+        `)
+        .in("status", ["Released", "Returned", "Closed"])
+        .order("released_at", { ascending: false, nullsFirst: false });
+
+    if (error) {
+        console.error("Return records query error:", error);
+
+        if (count) count.textContent = "Error";
+
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8">
+                        <strong>Unable to load return records.</strong>
+                        <br>
+                        <small>${escapeHTML(error.message)}</small>
+                    </td>
+                </tr>
+            `;
+        }
         return;
     }
 
     returnRecords = data || [];
 
-    await renderReturnRecords();
+    await loadRelatedData();
+    renderReturnRecords();
 }
 
 // -----------------------------------------------------
-// RENDER TABLE
+// LOAD EQUIPMENT AND REQUESTER DETAILS
 // -----------------------------------------------------
-async function renderReturnRecords() {
-
-    const tbody =
-        document.getElementById("returnsTableBody");
-
-    if (!tbody) return;
-
-    tbody.innerHTML = "";
-
-    if (returnRecords.length === 0) {
-
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" style="text-align:center;">
-                    No equipment currently waiting for return.
-                </td>
-            </tr>
-        `;
-
-        return;
-    }
+async function loadRelatedData() {
+    equipmentMap = {};
+    requesterMap = {};
 
     const equipmentIds = [
         ...new Set(
             returnRecords
-                .map(item => item.equipment_id)
-                .filter(Boolean)
+                .map(record => record.equipment_id)
+                .filter(id => id !== null && id !== undefined)
         )
     ];
 
     const requesterIds = [
         ...new Set(
             returnRecords
-                .map(item => item.requester_id)
+                .map(record => record.requester_id)
                 .filter(Boolean)
         )
     ];
 
-    let equipmentMap = {};
-    let requesterMap = {};
+    if (equipmentIds.length) {
+        const { data, error } = await window.supabaseClient
+            .from("equipment")
+            .select("id, equipment_code, equipment_name, status")
+            .in("id", equipmentIds);
 
-    // Equipment
-    if (equipmentIds.length > 0) {
-
-        const { data: equipmentData } =
-            await supabaseClient
-                .from("equipment")
-                .select(
-                    "id, equipment_code, equipment_name, status"
-                )
-                .in("id", equipmentIds);
-
-        (equipmentData || []).forEach(item => {
-            equipmentMap[item.id] = item;
-        });
+        if (error) {
+            console.error("Equipment lookup error:", error);
+        } else {
+            (data || []).forEach(item => {
+                equipmentMap[item.id] = item;
+            });
+        }
     }
 
-    // Requesters
-    if (requesterIds.length > 0) {
+    if (requesterIds.length) {
+        const { data, error } = await window.supabaseClient
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", requesterIds);
 
-        const { data: requesterData } =
-            await supabaseClient
-                .from("profiles")
-                .select("id, full_name")
-                .in("id", requesterIds);
+        if (error) {
+            console.error("Requester lookup error:", error);
+        } else {
+            (data || []).forEach(item => {
+                requesterMap[item.id] = item;
+            });
+        }
+    }
+}
 
-        (requesterData || []).forEach(item => {
-            requesterMap[item.id] = item;
-        });
+// -----------------------------------------------------
+// RENDER RECORDS + SEARCH + STATUS FILTER
+// -----------------------------------------------------
+function renderReturnRecords() {
+    const tbody = document.getElementById("returnsTableBody");
+    const count = document.getElementById("recordCount");
+
+    if (!tbody) return;
+
+    const search = (
+        document.getElementById("searchInput")?.value || ""
+    ).trim().toLowerCase();
+
+    const selectedStatus =
+        document.getElementById("statusFilter")?.value || "All";
+
+    const filtered = returnRecords.filter(record => {
+        const equipment = equipmentMap[record.equipment_id];
+        const requester = requesterMap[record.requester_id];
+
+        const searchable = [
+            record.id,
+            equipment?.equipment_code,
+            equipment?.equipment_name,
+            requester?.full_name,
+            record.purpose,
+            record.status
+        ].filter(value => value !== null && value !== undefined)
+            .join(" ")
+            .toLowerCase();
+
+        const matchesSearch = searchable.includes(search);
+        const matchesStatus =
+            selectedStatus === "All" ||
+            record.status === selectedStatus;
+
+        return matchesSearch && matchesStatus;
+    });
+
+    if (count) {
+        count.textContent =
+            `${filtered.length} record${filtered.length === 1 ? "" : "s"}`;
     }
 
-    returnRecords.forEach(record => {
+    if (!filtered.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align:center;">
+                    No return records match your search or status filter.
+                </td>
+            </tr>
+        `;
+        return;
+    }
 
-        const equipment =
-            equipmentMap[record.equipment_id];
+    tbody.innerHTML = "";
 
-        const requester =
-            requesterMap[record.requester_id];
+    filtered.forEach(record => {
+        const equipment = equipmentMap[record.equipment_id];
+        const requester = requesterMap[record.requester_id];
 
-        const row =
-            document.createElement("tr");
+        const row = document.createElement("tr");
+
+        const equipmentName = equipment
+            ? `${equipment.equipment_code || ""} - ${equipment.equipment_name || ""}`
+            : `Equipment #${record.equipment_id}`;
+
+        const actionButtons = [
+            `<button type="button" class="btn btn-small" data-action="view" data-id="${record.id}">View</button>`,
+            record.status === "Released"
+                ? `<button type="button" class="btn btn-small" data-action="return" data-id="${record.id}">Process Return</button>`
+                : ""
+        ].join(" ");
 
         row.innerHTML = `
+            <td>${escapeHTML(record.id)}</td>
+            <td>${escapeHTML(equipmentName)}</td>
+            <td>${escapeHTML(requester?.full_name || "Requester details unavailable")}</td>
+            <td>${escapeHTML(record.quantity)}</td>
+            <td>${escapeHTML(record.purpose || "-")}</td>
+            <td>${formatDate(record.released_at)}</td>
             <td>
-                ${escapeHTML(record.id)}
-            </td>
-
-            <td>
-                ${
-                    equipment
-                        ? escapeHTML(
-                            `${equipment.equipment_code} - ${equipment.equipment_name}`
-                        )
-                        : "Unknown equipment"
-                }
-            </td>
-
-            <td>
-                ${
-                    requester
-                        ? escapeHTML(
-                            requester.full_name
-                        )
-                        : "Unknown requester"
-                }
-            </td>
-
-            <td>
-                ${escapeHTML(record.quantity)}
-            </td>
-
-            <td>
-                ${escapeHTML(record.purpose)}
-            </td>
-
-            <td>
-                ${formatDate(record.released_at)}
-            </td>
-
-            <td>
-                <span class="status status-approved">
-                    Released
+                <span class="status status-${escapeHTML(
+                    String(record.status || "").toLowerCase()
+                )}">
+                    ${escapeHTML(record.status || "Unknown")}
                 </span>
             </td>
-
-            <td>
-                ${renderReturnActions(record)}
-            </td>
+            <td>${actionButtons}</td>
         `;
 
         tbody.appendChild(row);
     });
-}
 
-// -----------------------------------------------------
-// RETURN ACTION
-// -----------------------------------------------------
-function renderReturnActions(record) {
+    tbody.querySelectorAll("[data-action]").forEach(button => {
+        button.addEventListener("click", () => {
+            const id = Number(button.dataset.id);
 
-    if (
-        currentProfile.role !== "administrator" &&
-        currentProfile.role !== "staff"
-    ) {
-        return `
-            <button
-                class="btn btn-small"
-                onclick="viewReturn(${record.id})">
-                View
-            </button>
-        `;
-    }
-
-    return `
-        <button
-            class="btn btn-small"
-            onclick="viewReturn(${record.id})">
-            View
-        </button>
-
-        <button
-            class="btn btn-small"
-            onclick="processReturn(${record.id})">
-            Return
-        </button>
-    `;
+            if (button.dataset.action === "view") {
+                viewReturn(id);
+            } else if (button.dataset.action === "return") {
+                processReturn(id);
+            }
+        });
+    });
 }
 
 // -----------------------------------------------------
 // PROCESS RETURN
+// Note: two separate table updates are not fully atomic.
+// For strict consistency, use a Supabase database RPC
+// transaction and enforce permissions through RLS.
 // -----------------------------------------------------
 async function processReturn(id) {
+    const role = normalizeRole(currentProfile?.role);
 
-    if (
-        currentProfile.role !== "administrator" &&
-        currentProfile.role !== "staff"
-    ) {
+    if (!["administrator", "staff"].includes(role)) {
         showMessage(
-            "You do not have permission to process returns.",
+            "Only Administrator and Laboratory Staff may process returns.",
             "error"
         );
-
         return;
     }
 
-    const record =
-        returnRecords.find(item => item.id === id);
+    const record = returnRecords.find(item => Number(item.id) === Number(id));
 
-    if (!record) {
-
+    if (!record || record.status !== "Released") {
         showMessage(
-            "Return record not found.",
+            "This request is not awaiting return, or it was already processed.",
             "error"
         );
-
         return;
     }
 
-    if (record.status !== "Released") {
+    const equipment = equipmentMap[record.equipment_id];
 
+    if (!equipment) {
         showMessage(
-            "This request has already been processed.",
+            "Equipment information is unavailable. Refresh and try again.",
             "error"
         );
-
         return;
     }
 
-    // Check current equipment status
-    const { data: equipment, error: equipmentError } =
-        await supabaseClient
-            .from("equipment")
-            .select("id, status, quantity")
-            .eq("id", record.equipment_id)
-            .single();
-
-    if (equipmentError || !equipment) {
-
-        showMessage(
-            "Equipment could not be found.",
-            "error"
-        );
-
+    if (!confirm(`Process the return for request #${id}?`)) {
         return;
     }
 
-    // Return request
-    const { error: requestError } =
-        await supabaseClient
+    // Update request only if it is still Released.
+    const { data: updatedRequest, error: requestError } =
+        await window.supabaseClient
             .from("borrowing_requests")
             .update({
                 status: "Returned",
                 returned_at: new Date().toISOString()
             })
             .eq("id", id)
-            .eq("status", "Released");
+            .eq("status", "Released")
+            .select("id")
+            .maybeSingle();
 
     if (requestError) {
-
-        console.error(requestError);
-
+        console.error("Return update error:", requestError);
         showMessage(
-            "Failed to process return: " +
-            requestError.message,
+            `Unable to process return: ${requestError.message}`,
             "error"
         );
-
         return;
     }
 
-    // Equipment becomes available
-    const { error: equipmentUpdateError } =
-        await supabaseClient
-            .from("equipment")
-            .update({
-                status: "Available"
-            })
-            .eq("id", record.equipment_id);
-
-    if (equipmentUpdateError) {
-
-        console.error(
-            equipmentUpdateError
-        );
-
+    if (!updatedRequest) {
         showMessage(
-            "Return was recorded, but equipment status could not be updated.",
+            "This request was already processed or you do not have permission.",
             "error"
         );
-
         await loadReturnRecords();
+        return;
+    }
 
+    // Preserve damaged/maintenance states instead of blindly
+    // marking every item Available.
+    const oldStatus = equipment.status;
+    const newStatus = ["Damaged", "Maintenance"].includes(oldStatus)
+        ? oldStatus
+        : "Available";
+
+    const { error: equipmentError } = await window.supabaseClient
+        .from("equipment")
+        .update({ status: newStatus })
+        .eq("id", record.equipment_id);
+
+    if (equipmentError) {
+        console.error("Equipment status update error:", equipmentError);
+        showMessage(
+            "The request was marked Returned, but the equipment status could not be updated. Contact the administrator.",
+            "error"
+        );
+        await loadReturnRecords();
         return;
     }
 
     await createAuditLog(
         "RETURN",
-        "Borrowing",
+        "Borrowing Requests",
         id,
-        `Equipment ID ${record.equipment_id} returned successfully`
+        `Returned equipment ${equipment.equipment_code || record.equipment_id} for request #${id}`
     );
 
-    showMessage(
-        "Equipment returned successfully.",
-        "success"
-    );
-
+    showMessage("Equipment return processed successfully.", "success");
     await loadReturnRecords();
 }
 
 // -----------------------------------------------------
-// VIEW RETURN DETAILS
+// VIEW DETAILS
 // -----------------------------------------------------
 function viewReturn(id) {
-
-    const record =
-        returnRecords.find(item => item.id === id);
+    const record = returnRecords.find(item => Number(item.id) === Number(id));
 
     if (!record) {
-        showMessage(
-            "Return record not found.",
-            "error"
-        );
-
+        showMessage("Return record not found.", "error");
         return;
     }
 
-    const details =
-        document.getElementById("returnDetails");
+    const equipment = equipmentMap[record.equipment_id];
+    const requester = requesterMap[record.requester_id];
 
-    if (!details) return;
+    const details = document.getElementById("returnDetails");
+    const section = document.getElementById("returnDetailsSection");
+
+    if (!details || !section) return;
 
     details.innerHTML = `
-        <h3>Return Details</h3>
-
-        <p>
-            <strong>Request ID:</strong>
-            ${escapeHTML(record.id)}
-        </p>
-
-        <p>
-            <strong>Equipment ID:</strong>
-            ${escapeHTML(record.equipment_id)}
-        </p>
-
-        <p>
-            <strong>Requester ID:</strong>
-            ${escapeHTML(record.requester_id)}
-        </p>
-
-        <p>
-            <strong>Quantity:</strong>
-            ${escapeHTML(record.quantity)}
-        </p>
-
-        <p>
-            <strong>Purpose:</strong>
-            ${escapeHTML(record.purpose)}
-        </p>
-
-        <p>
-            <strong>Status:</strong>
-            ${escapeHTML(record.status)}
-        </p>
-
-        <p>
-            <strong>Released:</strong>
-            ${formatDate(record.released_at)}
-        </p>
-
-        <p>
-            <strong>Returned:</strong>
-            ${record.returned_at
-                ? formatDate(record.returned_at)
-                : "Not yet returned"
-            }
-        </p>
+        <p><strong>Request ID:</strong> ${escapeHTML(record.id)}</p>
+        <p><strong>Equipment:</strong> ${escapeHTML(
+            equipment
+                ? `${equipment.equipment_code || ""} - ${equipment.equipment_name || ""}`
+                : `Equipment #${record.equipment_id}`
+        )}</p>
+        <p><strong>Requester:</strong> ${escapeHTML(
+            requester?.full_name || "Requester details unavailable"
+        )}</p>
+        <p><strong>Quantity:</strong> ${escapeHTML(record.quantity)}</p>
+        <p><strong>Purpose:</strong> ${escapeHTML(record.purpose || "-")}</p>
+        <p><strong>Status:</strong> ${escapeHTML(record.status)}</p>
+        <p><strong>Released:</strong> ${formatDate(record.released_at)}</p>
+        <p><strong>Returned:</strong> ${formatDate(record.returned_at)}</p>
     `;
 
-    details.style.display = "block";
+    section.classList.remove("hidden");
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // -----------------------------------------------------
 // AUDIT LOG
 // -----------------------------------------------------
-async function createAuditLog(
-    action,
-    module,
-    recordId,
-    description
-) {
-
-    const { error } =
-        await supabaseClient
-            .from("audit_logs")
-            .insert([
-                {
-                    user_id: currentUser.id,
-                    action: action,
-                    module: module,
-                    record_id: recordId,
-                    description: description
-                }
-            ]);
+async function createAuditLog(action, module, recordId, description) {
+    const { error } = await window.supabaseClient
+        .from("audit_logs")
+        .insert({
+            user_id: currentUser.id,
+            action,
+            module,
+            record_id: recordId,
+            description
+        });
 
     if (error) {
-        console.error(
-            "Audit log error:",
-            error
-        );
+        // A failed audit insert should be visible in the console.
+        // RLS must permit authenticated users to insert their own logs.
+        console.error("Audit log insert failed:", error);
     }
 }
 
@@ -576,32 +568,33 @@ async function createAuditLog(
 // LOGOUT
 // -----------------------------------------------------
 async function logout() {
+    const { error } = await window.supabaseClient.auth.signOut();
 
-    await supabaseClient.auth.signOut();
+    if (error) {
+        console.error("Logout error:", error);
+        showMessage(`Unable to log out: ${error.message}`, "error");
+        return;
+    }
 
     sessionStorage.clear();
-
     window.location.href = "login.html";
 }
 
 // -----------------------------------------------------
 // HELPERS
 // -----------------------------------------------------
-function formatDate(date) {
+function formatDate(value) {
+    if (!value) return "-";
 
-    if (!date) return "-";
+    const date = new Date(value);
 
-    return new Date(date).toLocaleString();
+    if (Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleString();
 }
 
 function escapeHTML(value) {
-
-    if (
-        value === null ||
-        value === undefined
-    ) {
-        return "";
-    }
+    if (value === null || value === undefined) return "";
 
     return String(value)
         .replace(/&/g, "&amp;")
@@ -611,13 +604,8 @@ function escapeHTML(value) {
         .replace(/'/g, "&#039;");
 }
 
-function showMessage(
-    message,
-    type = "success"
-) {
-
-    const element =
-        document.getElementById("returnMessage");
+function showMessage(message, type = "success") {
+    const element = document.getElementById("returnMessage");
 
     if (!element) {
         alert(message);
@@ -625,13 +613,14 @@ function showMessage(
     }
 
     element.textContent = message;
-
-    element.className =
-        `message ${type}`;
-
+    element.className = `message ${type}`;
     element.style.display = "block";
 
-    setTimeout(() => {
+    if (element._hideTimer) {
+        clearTimeout(element._hideTimer);
+    }
+
+    element._hideTimer = setTimeout(() => {
         element.style.display = "none";
-    }, 4000);
+    }, 5000);
 }
