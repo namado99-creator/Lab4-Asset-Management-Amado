@@ -1,162 +1,50 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maintenance - Laboratory Asset Management</title>
-    <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maintenance - Laboratory Asset Management</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-
-    <!-- TOPBAR -->
-    <header class="topbar">
-        <div>
-            <h2>Laboratory Asset Management</h2>
-            <span>Maintenance</span>
-        </div>
-
-        <div>
-            <span id="userName">User</span>
-            <span id="userRole">Staff</span>
-            <button type="button" id="logoutBtn">Logout</button>
-        </div>
-    </header>
-
-    <div class="layout">
-
-        <!-- SIDEBAR -->
-        <aside class="sidebar">
-            <h3>Navigation</h3>
-
-            <a href="dashboard.html">Dashboard</a>
-            <a href="equipment.html">Equipment</a>
-            <a href="borrowing.html">Borrowing Requests</a>
-            <a href="returns.html">Returns</a>
-            <a href="maintenance.html" class="active">Maintenance</a>
-            <a href="audit-logs.html">Audit Logs</a>
-        </aside>
-
-        <!-- MAIN CONTENT -->
-        <main class="main-content">
-
-            <h1>Maintenance Management</h1>
-            <p>Manage laboratory equipment maintenance requests and monitor their status.</p>
-
-            <!-- MAINTENANCE FORM -->
-            <section class="card" id="maintenanceFormSection">
-                <h2>Submit Maintenance Request</h2>
-
-                <form id="maintenanceForm">
-
-                    <div class="form-group">
-                        <label for="equipmentId">Equipment</label>
-                        <select id="equipmentId" name="equipmentId" required>
-                            <option value="">Select equipment</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="issueDescription">Issue Description</label>
-                        <textarea
-                            id="issueDescription"
-                            name="issueDescription"
-                            rows="4"
-                            placeholder="Describe the equipment problem..."
-                            required></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="priority">Priority</label>
-                        <select id="priority" name="priority" required>
-                            <option value="Low">Low</option>
-                            <option value="Medium" selected>Medium</option>
-                            <option value="High">High</option>
-                        </select>
-                    </div>
-
-                    <button type="submit" id="submitMaintenanceBtn">
-                        Submit Request
-                    </button>
-
-                    <button
-                        type="button"
-                        id="cancelMaintenanceBtn"
-                        class="hidden">
-                        Cancel
-                    </button>
-
-                    <p id="maintenanceMessage" role="status"></p>
-                </form>
-            </section>
-
-            <!-- MAINTENANCE RECORDS -->
-            <section class="card">
-                <h2>Maintenance Records</h2>
-
-                <div class="form-group">
-                    <label for="searchInput">Search Records</label>
-                    <input
-                        type="search"
-                        id="searchInput"
-                        placeholder="Search equipment, requester, issue, or ID...">
-                </div>
-
-                <div class="form-group">
-                    <label for="statusFilter">Filter by Status</label>
-                    <select id="statusFilter">
-                        <option value="All">All Statuses</option>
-                        <option value="Pending">Pending</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Cancelled">Cancelled</option>
-                    </select>
-                </div>
-
-                <p id="recordCount">0 records</p>
-
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Equipment</th>
-                                <th>Requester</th>
-                                <th>Issue</th>
-                                <th>Priority</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-
-                        <tbody id="maintenanceTableBody">
-                            <tr>
-                                <td colspan="8">Loading maintenance records...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- MAINTENANCE DETAILS -->
-            <section class="card hidden" id="maintenanceDetailsSection">
-                <h2>Maintenance Details</h2>
-
-                <div id="maintenanceDetails"></div>
-
-                <button type="button" id="closeDetailsBtn">
-                    Close Details
-                </button>
-            </section>
-
-        </main>
-    </div>
-
-    <!-- SCRIPTS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/supabase.js"></script>
-    <script src="js/maintenance.js"></script>
-
+  <header class="topbar">
+    <div><h2>Laboratory Asset Management</h2><span>Maintenance</span></div>
+    <div><span id="userName">User</span> <span id="userRole">Role</span>
+      <button type="button" id="logoutBtn">Logout</button></div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <h3>Navigation</h3>
+      <a href="dashboard.html">Dashboard</a><a href="equipment.html">Equipment</a>
+      <a href="borrowing.html">Borrowing Requests</a><a href="returns.html">Returns</a>
+      <a href="maintenance.html" class="active">Maintenance</a><a href="audit-logs.html">Audit Logs</a>
+    </aside>
+    <main class="main-content">
+      <h1>Maintenance Management</h1>
+      <p>Submit equipment maintenance requests and monitor their status.</p>
+      <section class="card" id="maintenanceFormSection">
+        <h2>Submit Maintenance Request</h2>
+        <form id="maintenanceForm">
+          <div class="form-group"><label for="equipmentId">Equipment</label><select id="equipmentId" required><option value="">Select equipment</option></select></div>
+          <div class="form-group"><label for="issueDescription">Issue Description</label><textarea id="issueDescription" rows="4" maxlength="5000" required placeholder="Describe the equipment problem..."></textarea></div>
+          <div class="form-group"><label for="priority">Priority</label><select id="priority" required><option>Low</option><option selected>Medium</option><option>High</option></select></div>
+          <button type="submit" id="submitMaintenanceBtn">Submit Request</button>
+          <button type="button" id="cancelMaintenanceBtn" class="hidden">Cancel</button>
+          <p id="maintenanceMessage" role="status"></p>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Maintenance Records</h2>
+        <div class="form-group"><label for="searchInput">Search Records</label><input id="searchInput" type="search" placeholder="Search equipment, requester, issue, or ID..."></div>
+        <div class="form-group"><label for="statusFilter">Filter by Status</label><select id="statusFilter"><option value="All">All Statuses</option><option>Pending</option><option>In Progress</option><option>Completed</option><option>Cancelled</option></select></div>
+        <p id="recordCount">0 records</p>
+        <div class="table-container"><table><thead><tr><th>ID</th><th>Equipment</th><th>Requester</th><th>Issue</th><th>Priority</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody id="maintenanceTableBody"><tr><td colspan="8">Loading maintenance records...</td></tr></tbody></table></div>
+      </section>
+      <section class="card hidden" id="maintenanceDetailsSection"><h2>Maintenance Details</h2><div id="maintenanceDetails"></div><button type="button" id="closeDetailsBtn">Close Details</button></section>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/maintenance.js"></script>
 </body>
 </html>
